@@ -1,0 +1,74 @@
+SECTOR,CODE,NAME
+Agricultural,EGAD,Eaagads Ltd
+Agricultural,KUKZ,Kakuzi Plc
+Agricultural,KAPC,Kapchorua Tea Kenya Plc
+Agricultural,LIMT,Limuru Tea Plc
+Agricultural,SASN,Sasini Plc
+Agricultural,WTK,Williamson Tea Kenya Plc
+Automobiles and Accessories,CGEN,Car and General (K) Ltd
+Banking,ABSA,ABSA Bank Kenya Plc
+Banking,BKG,BK Group Plc
+Banking,COOP,Co-operative Bank of Kenya Ltd
+Banking,DTK,Diamond Trust Bank Kenya Ltd
+Banking,EQTY,Equity Group Holdings Plc
+Banking,HFCK,HF Group Ltd
+Banking,IMH,I & M Holdings Plc
+Banking,KCB,KCB Group Plc
+Banking,NBK,National Bank of Kenya Ltd
+Banking,NCBA,NCBA Group Plc
+Banking,SBIC,Stanbic Holdings Plc
+Banking,SCBK,Standard Chartered Bank Kenya Ltd
+Commercial and Services,DCON,Deacons (East Africa) Plc
+Commercial and Services,EVRD,Eveready East Africa Ltd
+Commercial and Services,XPRS,Express Kenya Plc
+Commercial and Services,KQ,Kenya Airways Plc
+Commercial and Services,LKL,Longhorn Publishers Plc
+Commercial and Services,NBV,Nairobi Business Ventures Ltd
+Commercial and Services,NMG,Nation Media Group Plc
+Commercial and Services,SMER,Sameer Africa Plc
+Commercial and Services,SGL,Standard Group Plc
+Commercial and Services,TPSE,TPS Eastern Africa (Serena) Ltd
+Commercial and Services,UCHM,Uchumi Supermarket Plc
+Commercial and Services,SCAN,WPP ScanGroup Plc
+Construction and Allied,ARM,ARM Cement Plc
+Construction and Allied,BAMB,Bamburi Cement Ltd
+Construction and Allied,CRWN,Crown Paints Kenya Plc
+Construction and Allied,CABL,East African Cables Ltd
+Construction and Allied,PORT,East African Portland Cement Ltd
+Energy and Petroleum,KEGN,Kenya Electricity Generating Company Plc
+Energy and Petroleum,KPLC-P4,KPLC-P4
+Energy and Petroleum,KPLC-P7,KPLC-P7
+Energy and Petroleum,KPLC,Kenya Power and Lighting Company Plc
+Energy and Petroleum,TOTL,Total Kenya Ltd
+Energy and Petroleum,UMME,Umeme Ltd
+Insurance,BRIT,Britam Holdings Plc
+Insurance,CIC,CIC Insurance Group Ltd
+Insurance,JUB,Jubilee Holdings Ltd
+Insurance,KNRE,Kenya Re-Insurance Corporation Ltd
+Insurance,LBTY,Liberty Kenya Holdings Ltd
+Insurance,SLAM,Sanlam Kenya Plc
+Investment,CTUM,Centum Investment Company Plc
+Investment,HAFR,Home Afrika Ltd
+Investment,KURV,Kurwitu Ventures Ltd
+Investment,OCH,Olympia Capital Holdings Ltd
+Investment,TCL,Trans-Century Plc
+Investment Services,NSE,Nairobi Securities Exchange Plc
+Manufacturing and Allied,BOC,BOC Kenya Plc
+Manufacturing and Allied,BAT,British American Tobacco Kenya Plc
+Manufacturing and Allied,CARB,Carbacid Investments Plc
+Manufacturing and Allied,EABL,East African Breweries Ltd
+Manufacturing and Allied,FTGH,Flame Tree Group Holdings Ltd
+Manufacturing and Allied,ORCH,Kenya Orchards Ltd
+Manufacturing and Allied,UNGA,Unga Group Ltd
+Telecommunication and Technology,SCOM,Safaricom Plc
+Real Estate Investment Trusts,FAHR,Stanlib Fahari Income-REIT
+Exchange Traded Funds,GLD,ABSA NewGold ETF
+Indices,^FNK15,FTSE NSE Kenya 15 Index
+Indices,^FNK25,FTSE NSE Kenya 25 Index
+Indices,^N20I,NSE 20-Share Index
+Indices,^N25I,NSE 25-Share Index
+Indices,^NASI,NSE All-Share Index
+Indices,^ZKEQTK,Zamara Kenya Equity Index (KES)
+Indices,^ZKEQTU,Zamara Kenya Equity Index (USD)
+,,
+,,
