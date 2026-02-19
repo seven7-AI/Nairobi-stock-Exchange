@@ -1,0 +1,61 @@
+name: Monthly NSE Report
+
+on:
+  schedule:
+    - cron: "0 19 28-31 * *"  # 7 PM UTC on 28th-31st (last day check)
+  workflow_dispatch:
+
+jobs:
+  run-monthly-report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Check if last day of month
+        id: check_last_day
+        run: |
+          DAY=$(date +%d)
+          MONTH=$(date +%m)
+          YEAR=$(date +%Y)
+          
+          # Get last day of current month
+          LAST_DAY=$(cal $MONTH $YEAR | awk 'NF {DAYS = $NF}; END {print DAYS}')
+          
+          if [ "$DAY" -eq "$LAST_DAY" ]; then
+            echo "is_last_day=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_last_day=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run monthly pipeline
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          STOCKANALYSIS_TABLE: stockanalysis_stocks
+        run: uv run nse-analysis generate-monthly-report
+
+      - name: Commit report changes
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        run: |
+          git add reports/monthly/*.md || true
+          if git diff --cached --quiet; then
+            echo "No report changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: add monthly NSE report"
+          git push

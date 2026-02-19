@@ -23,7 +23,7 @@ def render_daily_markdown(
     lines.append(f"# NSE Daily Market Report - {report_date}")
     lines.append("")
     lines.append(f"- Generated At (UTC): `{generated_at}`")
-    lines.append("- Data Sources: `stock_data`, `stockanalysis_stocks`, `NSE_DATA/*.csv`")
+    lines.append("- Data Sources: `stockanalysis_stocks`")
     lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
     lines.append("")
     lines.append("## Executive Summary")
@@ -80,5 +80,141 @@ def render_daily_markdown(
     lines.append(f"- Invalid Rows: `{data_quality.get('invalid_rows', 0)}`")
     lines.append(f"- Missing Ticker: `{data_quality.get('missing_ticker', 0)}`")
     lines.append(f"- Missing Price: `{data_quality.get('missing_price', 0)}`")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_weekly_markdown(
+    report_date: str,
+    generated_at: str,
+    market_summary: dict[str, Any],
+    indicator_rows: list[dict[str, Any]],
+    week_start_date: str,
+    week_end_date: str,
+) -> str:
+    """Render weekly markdown report."""
+    trend = market_summary.get("market_trend", "unknown")
+    mean_change = fmt_percent(market_summary.get("mean_weekly_change_pct"))
+    lines: list[str] = []
+    lines.append(f"# NSE Weekly Market Report - Week Ending {week_end_date}")
+    lines.append("")
+    lines.append(f"- Generated At (UTC): `{generated_at}`")
+    lines.append("- Data Sources: `stockanalysis_stocks`")
+    lines.append(f"- Week Period: `{week_start_date}` to `{week_end_date}`")
+    lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
+    lines.append("")
+    lines.append("## Executive Summary")
+    lines.append("")
+    lines.append(f"- Market Trend: **{trend}**")
+    lines.append(f"- Mean Weekly Change: **{mean_change}**")
+    lines.append("")
+    lines.append("## Top Weekly Gainers")
+    lines.append("")
+    lines.append("| Ticker | Company | Weekly Change | Current Price |")
+    lines.append("|---|---:|---:|---:|")
+    for row in market_summary.get("top_gainers", [])[:10]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_percent(row.get('price_change_1w_pct'))} | "
+            f"{fmt_number(row.get('stock_price'))} |"
+        )
+    lines.append("")
+    lines.append("## Top Weekly Losers")
+    lines.append("")
+    lines.append("| Ticker | Company | Weekly Change | Current Price |")
+    lines.append("|---|---:|---:|---:|")
+    for row in market_summary.get("top_losers", [])[:10]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_percent(row.get('price_change_1w_pct'))} | "
+            f"{fmt_number(row.get('stock_price'))} |"
+        )
+    lines.append("")
+    lines.append("## Weekly Performance Overview")
+    lines.append("")
+    lines.append("| Ticker | Company | Price | Weekly Change | Market Cap |")
+    lines.append("|---|---:|---:|---:|---:|")
+    for row in indicator_rows[:30]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_number(row.get('stock_price'))} | "
+            f"{fmt_percent(row.get('price_change_1w_pct'))} | "
+            f"{fmt_number(row.get('market_cap'))} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_monthly_markdown(
+    report_date: str,
+    generated_at: str,
+    market_summary: dict[str, Any],
+    indicator_rows: list[dict[str, Any]],
+    month: str | int,
+    year: int,
+) -> str:
+    """Render monthly markdown report."""
+    trend = market_summary.get("market_trend", "unknown")
+    mean_change = fmt_percent(market_summary.get("mean_monthly_change_pct"))
+    month_name = month if isinstance(month, str) else [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ][month - 1] if isinstance(month, int) else str(month)
+    
+    lines: list[str] = []
+    lines.append(f"# NSE Monthly Market Report - {month_name} {year}")
+    lines.append("")
+    lines.append(f"- Generated At (UTC): `{generated_at}`")
+    lines.append("- Data Sources: `stockanalysis_stocks`")
+    lines.append(f"- Month: `{month_name} {year}`")
+    lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
+    lines.append("")
+    lines.append("## Executive Summary")
+    lines.append("")
+    lines.append(f"- Market Trend: **{trend}**")
+    lines.append(f"- Mean Monthly Change: **{mean_change}**")
+    lines.append("")
+    lines.append("## Top Monthly Gainers")
+    lines.append("")
+    lines.append("| Ticker | Company | Monthly Change | Current Price | Market Cap |")
+    lines.append("|---|---:|---:|---:|---:|")
+    for row in market_summary.get("top_gainers", [])[:15]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_percent(row.get('price_change_1m_pct'))} | "
+            f"{fmt_number(row.get('stock_price'))} | "
+            f"{fmt_number(row.get('market_cap'))} |"
+        )
+    lines.append("")
+    lines.append("## Top Monthly Losers")
+    lines.append("")
+    lines.append("| Ticker | Company | Monthly Change | Current Price | Market Cap |")
+    lines.append("|---|---:|---:|---:|---:|")
+    for row in market_summary.get("top_losers", [])[:15]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_percent(row.get('price_change_1m_pct'))} | "
+            f"{fmt_number(row.get('stock_price'))} | "
+            f"{fmt_number(row.get('market_cap'))} |"
+        )
+    lines.append("")
+    lines.append("## Monthly Performance Overview")
+    lines.append("")
+    lines.append("| Ticker | Company | Price | Monthly Change | Market Cap | PE Ratio |")
+    lines.append("|---|---:|---:|---:|---:|---:|")
+    for row in indicator_rows[:50]:
+        lines.append(
+            f"| {row.get('ticker_symbol', 'N/A')} | "
+            f"{row.get('company_name', 'N/A')} | "
+            f"{fmt_number(row.get('stock_price'))} | "
+            f"{fmt_percent(row.get('price_change_1m_pct'))} | "
+            f"{fmt_number(row.get('market_cap'))} | "
+            f"{fmt_number(row.get('pe_ratio'))} |"
+        )
     lines.append("")
     return "\n".join(lines)

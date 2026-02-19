@@ -41,8 +41,7 @@ def inspect_table_metadata(
 
 
 def inspect_all(settings: Settings, conn: SupabaseConnection) -> dict[str, Any]:
-    """Inspect both operational source tables."""
+    """Inspect stockanalysis_stocks table."""
     return {
-        "stock_data": inspect_table_metadata(conn, settings.stock_table),
         "stockanalysis_stocks": inspect_table_metadata(conn, settings.stockanalysis_table),
     }

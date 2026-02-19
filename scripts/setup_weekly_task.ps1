@@ -1,25 +1,26 @@
 param(
-    [string]$TaskName = "NSE-Daily-Report",
+    [string]$TaskName = "NSE-Weekly-Report",
     [string]$Time = "19:00",  # 7 PM
     [string]$RepoPath = "D:\2026 Projects\Nairobi-stock-Exchange"
 )
 
 $ErrorActionPreference = "Stop"
 
-$runnerScript = Join-Path $RepoPath "scripts\run_daily_task.ps1"
+$runnerScript = Join-Path $RepoPath "scripts\run_weekly_task.ps1"
 if (-not (Test-Path $runnerScript)) {
     throw "Runner script not found at $runnerScript"
 }
 
-$runnerCmd = Join-Path $RepoPath "scripts\run_daily_task.cmd"
+$runnerCmd = Join-Path $RepoPath "scripts\run_weekly_task.cmd"
 if (-not (Test-Path $runnerCmd)) {
     throw "CMD runner script not found at $runnerCmd"
 }
 
-# Create or overwrite task with schtasks using explicit argument list
+# Create or overwrite task with schtasks - Weekly on Fridays
 $createArgs = @(
     "/Create",
-    "/SC", "DAILY",
+    "/SC", "WEEKLY",
+    "/D", "FRI",  # Friday
     "/ST", $Time,
     "/TN", $TaskName,
     "/TR", "`"$runnerCmd`"",
@@ -32,9 +33,9 @@ if ($createProcess.ExitCode -ne 0) {
 
 $taskCommand = "`"$runnerCmd`""
 
-Write-Host "Scheduled task created/updated."
+Write-Host "Weekly scheduled task created/updated."
 Write-Host "Task Name: $TaskName"
-Write-Host "Time: $Time"
+Write-Host "Schedule: Every Friday at $Time"
 Write-Host "Command: $taskCommand"
 
 # Show final task details

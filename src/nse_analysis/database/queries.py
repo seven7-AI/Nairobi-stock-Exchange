@@ -76,6 +76,37 @@ def fetch_rows_by_ticker(
     return list(getattr(response, "data", []))
 
 
+def fetch_historical_by_tickers(
+    conn: SupabaseConnection,
+    table_name: str,
+    ticker_symbols: list[str],
+    days_back: int = 365,
+    timestamp_column: str = "scraped_at",
+    now_utc: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch historical rows for multiple tickers within date range."""
+    if not ticker_symbols:
+        return []
+    current = now_utc or datetime.now(tz=timezone.utc)
+    start_dt = current - timedelta(days=days_back)
+    start_iso = start_dt.astimezone(timezone.utc).isoformat()
+    end_iso = current.astimezone(timezone.utc).isoformat()
+    
+    # Fetch for all tickers in date range
+    response = conn.execute_with_retry(
+        lambda: conn.client.table(table_name)
+        .select("*")
+        .in_("ticker_symbol", ticker_symbols)
+        .gte(timestamp_column, start_iso)
+        .lte(timestamp_column, end_iso)
+        .order(timestamp_column, desc=False)
+        .limit(50000)  # Large limit to get all historical data
+        .execute(),
+        f"fetch_historical_by_tickers:{table_name}:{len(ticker_symbols)}_tickers",
+    )
+    return list(getattr(response, "data", []))
+
+
 def extract_json_metrics(row: dict[str, Any], metrics_column: str) -> dict[str, Any]:
     """Normalize JSONB payload into dict."""
     value = row.get(metrics_column)

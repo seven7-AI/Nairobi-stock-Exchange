@@ -22,8 +22,8 @@ class FeasibilityRecord:
 
 # Coverage map can be expanded as data quality improves.
 INDICATOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
-    "Stock Price": {"fields": {"stock_price"}, "source": "stock_data"},
-    "Price Change 1D (%)": {"fields": {"stock_change"}, "source": "stock_data"},
+    "Stock Price": {"fields": {"stock_price"}, "source": "stockanalysis_stocks"},
+    "Price Change 1D (%)": {"fields": {"stock_change"}, "source": "stockanalysis_stocks"},
     "Volume": {"fields": {"price_metrics.volume"}, "source": "stockanalysis_stocks"},
     "Market Cap": {"fields": {"overview_metrics.marketCap"}, "source": "stockanalysis_stocks"},
     "PE Ratio": {"fields": {"overview_metrics.pe_ratio"}, "source": "stockanalysis_stocks"},
@@ -32,23 +32,22 @@ INDICATOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     "Dividend Yield": {"fields": {"dividends_metrics.dividendYield"}, "source": "stockanalysis_stocks"},
     "52 Week Low": {"fields": {"price_metrics.low52"}, "source": "stockanalysis_stocks"},
     "52 Week High": {"fields": {"price_metrics.high52"}, "source": "stockanalysis_stocks"},
-    "Price Change 1W": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "Price Change 1M": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "Price Change 3M": {"fields": {"historical_prices"}, "source": "historical_csv"},
+    "Price Change 1W": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "Price Change 1M": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "Price Change 3M": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
     "Total Return 1M": {"fields": {"performance_metrics.tr1m"}, "source": "stockanalysis_stocks"},
     "Total Return 1Y": {"fields": {"performance_metrics.tr1y"}, "source": "stockanalysis_stocks"},
     "Total Return 6M": {"fields": {"performance_metrics.tr6m"}, "source": "stockanalysis_stocks"},
     "Total Return YTD": {"fields": {"performance_metrics.trYTD"}, "source": "stockanalysis_stocks"},
-    "Return CAGR 1Y": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "20-Day Moving Average": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "50-Day Moving Average": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "200-Day Moving Average": {"fields": {"historical_prices"}, "source": "historical_csv"},
-    "Relative Strength Index (RSI)": {"fields": {"historical_prices"}, "source": "historical_csv"},
+    "Return CAGR 1Y": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "20-Day Moving Average": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "50-Day Moving Average": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "200-Day Moving Average": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
+    "Relative Strength Index (RSI)": {"fields": {"historical_prices"}, "source": "stockanalysis_stocks"},
 }
 
 
 AVAILABLE_FIELD_HINTS = {
-    "stock_data": {"ticker_symbol", "stock_name", "stock_price", "stock_change", "created_at"},
     "stockanalysis_stocks": {
         "ticker_symbol",
         "company_name",
@@ -77,8 +76,8 @@ AVAILABLE_FIELD_HINTS = {
         "performance_metrics.tr1y",
         "performance_metrics.tr6m",
         "performance_metrics.trYTD",
+        "historical_prices",  # Historical prices now come from stockanalysis_stocks table
     },
-    "historical_csv": {"historical_prices"},
 }
 
 

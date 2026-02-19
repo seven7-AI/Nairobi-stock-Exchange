@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # Usage:
-#   ./scripts/setup_cron.sh "0 6 * * *" "/absolute/path/to/repo"
+#   ./scripts/setup_cron.sh "0 19 * * *" "/absolute/path/to/repo"
 # Defaults:
-#   cron schedule: 0 6 * * * (06:00 daily)
+#   cron schedule: 0 19 * * * (19:00 UTC / 7 PM UTC daily)
 #   repo path: current working directory
 
-SCHEDULE="${1:-0 6 * * *}"
+SCHEDULE="${1:-0 19 * * *}"
 REPO_PATH="${2:-$(pwd)}"
 LOG_PATH="${REPO_PATH}/logs/cron.log"
 

@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $logDir = Join-Path $RepoPath "logs"
-$logFile = Join-Path $logDir "task_scheduler.log"
+$logFile = Join-Path $logDir "monthly_task_scheduler.log"
 if (-not (Test-Path $logDir)) {
     New-Item -Path $logDir -ItemType Directory | Out-Null
 }
@@ -13,13 +13,13 @@ if (-not (Test-Path $logDir)) {
 Push-Location $RepoPath
 try {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $logFile -Value "[$timestamp] Starting daily pipeline"
+    Add-Content -Path $logFile -Value "[$timestamp] Starting monthly pipeline"
     
     # Use Start-Process with separate stdout and stderr files
     $stdoutFile = "$logFile.stdout.tmp"
     $stderrFile = "$logFile.stderr.tmp"
     
-    $process = Start-Process -FilePath "uv" -ArgumentList "run", "nse-analysis", "run-daily" `
+    $process = Start-Process -FilePath "uv" -ArgumentList "run", "nse-analysis", "generate-monthly-report" `
         -NoNewWindow -Wait -PassThru `
         -RedirectStandardOutput $stdoutFile `
         -RedirectStandardError $stderrFile
@@ -35,7 +35,7 @@ try {
     }
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $logFile -Value "[$timestamp] Daily pipeline finished"
+    Add-Content -Path $logFile -Value "[$timestamp] Monthly pipeline finished"
     
     # Check exit code
     if ($process.ExitCode -ne 0) {
@@ -46,16 +46,18 @@ try {
     # Commit and push if git is available
     if (Get-Command git -ErrorAction SilentlyContinue) {
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        Add-Content -Path $logFile -Value "[$timestamp] Committing daily report"
-        git add reports/daily/*.md 2>&1 | Out-Null
-        $gitStatus = git status --porcelain reports/daily/*.md 2>&1
-        if ($gitStatus) {
+        Add-Content -Path $logFile -Value "[$timestamp] Committing monthly report"
+        git add reports/monthly/*.md 2>&1 | Out-Null
+        $null = git diff --cached --quiet reports/monthly/*.md 2>&1
+        $hasChanges = $LASTEXITCODE -ne 0
+        if ($hasChanges) {
+            # There are staged changes, commit and push
             git config user.name "NSE-Report-Bot" 2>&1 | Out-Null
             git config user.email "nse-report-bot@localhost" 2>&1 | Out-Null
-            git commit -m "chore: add daily NSE report" 2>&1 | Add-Content -Path $logFile
+            git commit -m "chore: add monthly NSE report" 2>&1 | Add-Content -Path $logFile
             git push 2>&1 | Add-Content -Path $logFile
             $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            Add-Content -Path $logFile -Value "[$timestamp] Daily report committed and pushed"
+            Add-Content -Path $logFile -Value "[$timestamp] Monthly report committed and pushed"
         } else {
             Add-Content -Path $logFile -Value "[$timestamp] No changes to commit"
         }
@@ -64,7 +66,6 @@ try {
 catch {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Add-Content -Path $logFile -Value "[$timestamp] ERROR: $($_.Exception.Message)"
-    Add-Content -Path $logFile -Value "[$timestamp] ERROR: $($_.Exception.StackTrace)"
     exit 1
 }
 finally {

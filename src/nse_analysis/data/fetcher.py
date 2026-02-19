@@ -1,9 +1,8 @@
-"""Data ingestion from Supabase and local historical CSV archives."""
+"""Data ingestion from Supabase stockanalysis_stocks table."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -15,21 +14,12 @@ from nse_analysis.utils.logger import get_logger
 
 
 class DataFetcher:
-    """Coordinator for current-day and historical NSE data pulls."""
+    """Coordinator for current-day and historical NSE data pulls from stockanalysis_stocks."""
 
     def __init__(self, settings: Settings, conn: SupabaseConnection):
         self.settings = settings
         self.conn = conn
         self.logger = get_logger("nse_analysis.data.fetcher")
-
-    def fetch_latest_stock_data(self) -> list[dict[str, Any]]:
-        """Get latest rows from `stock_data`."""
-        return queries.fetch_latest_rows(
-            self.conn,
-            table_name=self.settings.stock_table,
-            timestamp_column="created_at",
-            limit=500,
-        )
 
     def fetch_latest_analysis_data(self) -> list[dict[str, Any]]:
         """Get latest rows from `stockanalysis_stocks`."""
@@ -42,114 +32,148 @@ class DataFetcher:
 
     def fetch_daily_window(
         self, as_of_utc: datetime | None = None
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Fetch one-day rolling window from both source tables."""
-        now_utc = as_of_utc or datetime.now(tz=timezone.utc)
-        start = now_utc - timedelta(days=1)
-        stock = queries.fetch_rows_by_date_range(
-            self.conn,
-            table_name=self.settings.stock_table,
-            timestamp_column="created_at",
-            start_dt=start,
-            end_dt=now_utc,
-        )
-        analysis = queries.fetch_rows_by_date_range(
+    ) -> list[dict[str, Any]]:
+        """Fetch latest row per ticker from stockanalysis_stocks table.
+        
+        Since the scraper now keeps historical data (not just upserting),
+        we fetch the latest row per ticker instead of a date range.
+        """
+        # Fetch latest rows ordered by scraped_at descending
+        # The merge_current_data will deduplicate to get one row per ticker
+        analysis = queries.fetch_latest_rows(
             self.conn,
             table_name=self.settings.stockanalysis_table,
             timestamp_column="scraped_at",
-            start_dt=start,
-            end_dt=now_utc,
+            limit=1000,  # Get enough rows to cover all tickers
         )
         self.logger.info(
             "daily_window_fetched",
-            stock_rows=len(stock),
             analysis_rows=len(analysis),
-            start=start.isoformat(),
-            end=now_utc.isoformat(),
         )
-        return stock, analysis
+        return analysis
 
     def merge_current_data(
         self,
-        stock_rows: list[dict[str, Any]],
         analysis_rows: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Merge both datasets on ticker symbol."""
+        """Get latest row per ticker from analysis data."""
+        # Sort by scraped_at descending to ensure we get the latest row per ticker
+        sorted_rows = sorted(
+            analysis_rows,
+            key=lambda r: r.get("scraped_at", ""),
+            reverse=True,
+        )
         by_ticker: dict[str, dict[str, Any]] = {}
-        for row in stock_rows:
+        for row in sorted_rows:
             ticker = str(row.get("ticker_symbol", "")).strip()
             if not ticker:
                 continue
-            by_ticker[ticker] = {**row}
-        for row in analysis_rows:
-            ticker = str(row.get("ticker_symbol", "")).strip()
-            if not ticker:
-                continue
-            merged = by_ticker.get(ticker, {})
-            merged.update(row)
-            by_ticker[ticker] = merged
+            # Keep the most recent row per ticker
+            if ticker not in by_ticker:
+                by_ticker[ticker] = {**row}
         merged_rows = list(by_ticker.values())
         self.logger.info("current_data_merged", merged_rows=len(merged_rows))
         return merged_rows
 
-    def load_historical_csv(self) -> pd.DataFrame:
-        """Load historical NSE CSV files from `NSE_DATA`."""
-        path = self.settings.historical_data_dir
-        files = sorted(path.glob("NSE_data_all_stocks_*.csv"))
-        frames: list[pd.DataFrame] = []
-        for file_path in files:
-            df = self._read_single_historical_file(file_path)
-            if not df.empty:
-                frames.append(df)
-        if not frames:
+    def load_historical_from_supabase(self, days_back: int | None = None) -> pd.DataFrame:
+        """Load historical price data from stockanalysis_stocks table.
+        
+        First tries to use price_history field from latest rows if available,
+        otherwise falls back to fetching historical rows by date range.
+        """
+        days = days_back or getattr(self.settings, "historical_days_back", 365)
+        
+        # Get latest rows per ticker
+        latest_rows = self.fetch_daily_window()
+        merged_rows = self.merge_current_data(latest_rows)
+        
+        if not merged_rows:
+            self.logger.warning("no_tickers_found_for_historical")
             return pd.DataFrame()
-        full = pd.concat(frames, ignore_index=True)
-        full = full.sort_values(["ticker_symbol", "date"]).reset_index(drop=True)
-        self.logger.info("historical_csv_loaded", rows=len(full), files=len(files))
-        return full
-
-    def _read_single_historical_file(self, file_path: Path) -> pd.DataFrame:
-        """Read one raw file and normalize columns."""
-        raw = pd.read_csv(file_path, dtype=str)
-        rename_map = {
-            "Date": "date",
-            "Code": "ticker_symbol",
-            "Name": "stock_name",
-            "Day Price": "stock_price",
-            "Change": "stock_change",
-            "Volume": "volume",
-            "12m Low": "low_12m",
-            "12m High": "high_12m",
-            "Day Low": "day_low",
-            "Day High": "day_high",
-            "Previous": "previous_close",
-            "Change%": "change_percent",
-        }
-        df = raw.rename(columns=rename_map)
-        required = {"date", "ticker_symbol", "stock_name", "stock_price"}
-        if not required.issubset(df.columns):
+        
+        # Try to extract historical data from price_history field first
+        historical_data: list[dict[str, Any]] = []
+        price_history_used = 0
+        
+        for row in merged_rows:
+            ticker = str(row.get("ticker_symbol", "")).strip()
+            price_history = row.get("price_history")
+            
+            # Check if price_history exists and is a list
+            if isinstance(price_history, list) and len(price_history) > 0:
+                # Extract price history entries
+                for entry in price_history:
+                    if isinstance(entry, dict):
+                        # Expected format: {"date": "...", "price": ...} or similar
+                        entry_date = entry.get("date") or entry.get("scraped_at") or entry.get("timestamp")
+                        entry_price = entry.get("price") or entry.get("stock_price")
+                        
+                        if entry_date and entry_price is not None:
+                            historical_data.append({
+                                "ticker_symbol": ticker,
+                                "date": entry_date,
+                                "stock_price": entry_price,
+                            })
+                            price_history_used += 1
+        
+        # If we got data from price_history, use it
+        if historical_data:
+            df = pd.DataFrame(historical_data)
+            df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
+            df["stock_price"] = pd.to_numeric(df["stock_price"], errors="coerce")
+            df = df.dropna(subset=["ticker_symbol", "date", "stock_price"])
+            df = df.sort_values(["ticker_symbol", "date"]).reset_index(drop=True)
+            
+            self.logger.info(
+                "historical_data_loaded_from_price_history",
+                rows=len(df),
+                tickers=len(set(df["ticker_symbol"])),
+                price_history_entries=price_history_used,
+            )
+            return df
+        
+        # Fallback: Fetch historical rows by date range
+        ticker_symbols = [str(row.get("ticker_symbol", "")).strip() for row in merged_rows if row.get("ticker_symbol")]
+        
+        historical_rows = queries.fetch_historical_by_tickers(
+            self.conn,
+            table_name=self.settings.stockanalysis_table,
+            ticker_symbols=ticker_symbols,
+            days_back=days,
+            timestamp_column="scraped_at",
+        )
+        
+        if not historical_rows:
+            self.logger.warning("no_historical_data_fetched")
             return pd.DataFrame()
-        df = df[list(set(rename_map.values()) & set(df.columns))]
-        df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True, format="mixed")
-        for numeric_col in [
-            "stock_price",
-            "stock_change",
-            "volume",
-            "low_12m",
-            "high_12m",
-            "day_low",
-            "day_high",
-            "previous_close",
-            "change_percent",
-        ]:
-            if numeric_col in df.columns:
-                cleaned = (
-                    df[numeric_col]
-                    .astype(str)
-                    .str.replace(",", "", regex=False)
-                    .str.replace("%", "", regex=False)
-                    .replace("-", None)
-                )
-                df[numeric_col] = pd.to_numeric(cleaned, errors="coerce")
-        df = df.dropna(subset=["date", "ticker_symbol", "stock_price"])
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(historical_rows)
+        
+        # Rename scraped_at to date for compatibility with calculator
+        if "scraped_at" in df.columns:
+            df["date"] = pd.to_datetime(df["scraped_at"], errors="coerce", utc=True)
+        
+        # Ensure required columns exist
+        required_cols = ["ticker_symbol", "date", "stock_price"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            self.logger.warning("missing_columns_in_historical", missing=missing_cols)
+            return pd.DataFrame()
+        
+        # Convert stock_price to numeric
+        df["stock_price"] = pd.to_numeric(df["stock_price"], errors="coerce")
+        
+        # Sort by ticker and date
+        df = df.sort_values(["ticker_symbol", "date"]).reset_index(drop=True)
+        
+        # Drop rows with missing required data
+        df = df.dropna(subset=["ticker_symbol", "date", "stock_price"])
+        
+        self.logger.info(
+            "historical_data_loaded_from_rows",
+            rows=len(df),
+            tickers=len(ticker_symbols),
+            days_back=days,
+        )
         return df

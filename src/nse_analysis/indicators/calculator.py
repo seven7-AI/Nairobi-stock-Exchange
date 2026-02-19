@@ -35,17 +35,38 @@ def calculate_for_row(row: dict[str, Any], historical: pd.DataFrame) -> dict[str
     if latest_price is None:
         raise IndicatorCalculationError(f"Missing latest price for {ticker}.")
 
+    stock_change = _to_float(row.get("stock_change"))
+    
     metrics: dict[str, Any] = {
         "ticker_symbol": ticker,
         "company_name": row.get("company_name") or row.get("stock_name") or ticker,
         "stock_price": latest_price,
-        "stock_change": _to_float(row.get("stock_change")),
+        "stock_change": stock_change,
     }
 
+    # Calculate 1D change percentage from stock_price and stock_change (primary method)
+    if stock_change is not None and latest_price is not None:
+        # stock_change is absolute change, so previous_price = current_price - stock_change
+        prev_price = latest_price - stock_change
+        if prev_price > 0:
+            metrics["price_change_1d_pct"] = (stock_change / prev_price) * 100.0
+        elif abs(stock_change) < 0.0001:
+            # If stock_change is essentially zero, percentage is 0
+            metrics["price_change_1d_pct"] = 0.0
+        else:
+            # Edge case: if prev_price is 0 or negative, set to None
+            metrics["price_change_1d_pct"] = None
+    
+    # Use historical data for weekly/monthly calculations and as fallback for 1D if stock_change unavailable
     if not history.empty:
         history_prices = pd.to_numeric(history["stock_price"], errors="coerce").dropna()
-        if len(history_prices) >= 2:
-            metrics["price_change_1d_pct"] = ((history_prices.iloc[-1] / history_prices.iloc[-2]) - 1.0) * 100.0
+        
+        # Fallback: if 1D change not calculated from stock_change, try historical data
+        if "price_change_1d_pct" not in metrics or metrics["price_change_1d_pct"] is None:
+            if len(history_prices) >= 2:
+                metrics["price_change_1d_pct"] = ((history_prices.iloc[-1] / history_prices.iloc[-2]) - 1.0) * 100.0
+        
+        # Weekly and monthly calculations from historical data
         if len(history_prices) >= 5:
             metrics["price_change_1w_pct"] = ((history_prices.iloc[-1] / history_prices.iloc[-5]) - 1.0) * 100.0
         if len(history_prices) >= 22:
@@ -155,6 +176,44 @@ def classify_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]
     top_losers = ordered.tail(5)[["ticker_symbol", "price_change_1d_pct"]].fillna(0.0).to_dict("records")
 
     return {"market_trend": trend, "mean_daily_change_pct": mean_change, "top_gainers": top_gainers, "top_losers": top_losers}
+
+
+def classify_weekly_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
+    """Generate weekly market-level summary insights."""
+    if not indicators:
+        return {"market_trend": "insufficient_data", "top_gainers": [], "top_losers": []}
+
+    frame = pd.DataFrame(indicators)
+    if "price_change_1w_pct" not in frame.columns:
+        frame["price_change_1w_pct"] = np.nan
+    frame["price_change_1w_pct"] = pd.to_numeric(frame["price_change_1w_pct"], errors="coerce")
+    mean_change = float(np.nanmean(frame["price_change_1w_pct"])) if frame["price_change_1w_pct"].notna().any() else 0.0
+    trend = "bullish" if mean_change > 0 else "bearish" if mean_change < 0 else "flat"
+
+    ordered = frame.sort_values("price_change_1w_pct", ascending=False, na_position="last")
+    top_gainers = ordered.head(10)[["ticker_symbol", "company_name", "stock_price", "price_change_1w_pct"]].fillna(0.0).to_dict("records")
+    top_losers = ordered.tail(10)[["ticker_symbol", "company_name", "stock_price", "price_change_1w_pct"]].fillna(0.0).to_dict("records")
+
+    return {"market_trend": trend, "mean_weekly_change_pct": mean_change, "top_gainers": top_gainers, "top_losers": top_losers}
+
+
+def classify_monthly_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
+    """Generate monthly market-level summary insights."""
+    if not indicators:
+        return {"market_trend": "insufficient_data", "top_gainers": [], "top_losers": []}
+
+    frame = pd.DataFrame(indicators)
+    if "price_change_1m_pct" not in frame.columns:
+        frame["price_change_1m_pct"] = np.nan
+    frame["price_change_1m_pct"] = pd.to_numeric(frame["price_change_1m_pct"], errors="coerce")
+    mean_change = float(np.nanmean(frame["price_change_1m_pct"])) if frame["price_change_1m_pct"].notna().any() else 0.0
+    trend = "bullish" if mean_change > 0 else "bearish" if mean_change < 0 else "flat"
+
+    ordered = frame.sort_values("price_change_1m_pct", ascending=False, na_position="last")
+    top_gainers = ordered.head(15)[["ticker_symbol", "company_name", "stock_price", "market_cap", "price_change_1m_pct"]].fillna(0.0).to_dict("records")
+    top_losers = ordered.tail(15)[["ticker_symbol", "company_name", "stock_price", "market_cap", "price_change_1m_pct"]].fillna(0.0).to_dict("records")
+
+    return {"market_trend": trend, "mean_monthly_change_pct": mean_change, "top_gainers": top_gainers, "top_losers": top_losers}
 
 
 def unavailable_requirements(feasibility_records: list[FeasibilityRecord]) -> dict[str, list[str]]:
