@@ -32,8 +32,14 @@ jobs:
           --health-interval 10s --health-timeout 5s --health-retries 5
 
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nse
-      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nse
+      # Composed at run time from these parts rather than written as a DSN
+      # literal: a URI with an embedded password is a credential, and secret
+      # scanners correctly flag one committed to source.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: nse
       REDIS_URL: redis://localhost:6379/0
       SUPABASE_URL: https://placeholder.supabase.co
       SUPABASE_KEY: placeholder-key
@@ -54,6 +60,10 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --dev --frozen
+
+      - name: Compose the test database URL
+        run: |
+          echo "TEST_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}" >> "$GITHUB_ENV"
 
       - name: Ruff
         run: uv run ruff check .

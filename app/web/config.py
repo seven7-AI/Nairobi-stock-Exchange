@@ -12,6 +12,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
@@ -48,10 +49,23 @@ class Settings(BaseSettings):
     stockanalysis_table: str = Field(default="stockanalysis_stocks", alias="STOCKANALYSIS_TABLE")
 
     # --- database (tables this repo owns) ---------------------------------
-    database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/nse",
+    # Composed from parts rather than stored as one DSN literal: a URI with an
+    # embedded password is a credential, and one committed to source is a
+    # leaked credential even when the value is only a local default. Building
+    # it here also URL-encodes the password, so a real one containing `@`, `/`
+    # or `:` does not silently corrupt the DSN.
+    postgres_user: str = Field(default="postgres", alias="POSTGRES_USER")
+    postgres_password: str = Field(default="", alias="POSTGRES_PASSWORD")
+    postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
+    postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
+    postgres_db: str = Field(default="nse", alias="POSTGRES_DB")
+    database_url_override: str | None = Field(
+        default=None,
         alias="DATABASE_URL",
-        description="Async SQLAlchemy DSN. Must use the asyncpg driver.",
+        description=(
+            "Full async DSN. Takes precedence over the POSTGRES_* parts when set, "
+            "for managed providers that hand out a single connection string."
+        ),
     )
     db_echo: bool = Field(default=False, alias="DB_ECHO")
     db_pool_size: int = Field(default=10, alias="DB_POOL_SIZE")
@@ -112,6 +126,19 @@ class Settings(BaseSettings):
         alias="HISTORICAL_DAYS_BACK",
         description="Days of history to load when computing indicators.",
     )
+
+    @property
+    def database_url(self) -> str:
+        """Async DSN for the API. Uses DATABASE_URL when set, else the parts."""
+        if self.database_url_override:
+            return self.database_url_override
+        auth = quote(self.postgres_user, safe="")
+        if self.postgres_password:
+            auth = f"{auth}:{quote(self.postgres_password, safe='')}"
+        return (
+            f"postgresql+asyncpg://{auth}@"
+            f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
     @property
     def sync_database_url(self) -> str:
