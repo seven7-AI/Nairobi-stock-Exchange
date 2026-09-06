@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Celery entry point: worker, beat, or flower.
 
-    uv run python start_celery.py worker
-    uv run python start_celery.py beat
-    uv run python start_celery.py flower
+uv run python start_celery.py worker
+uv run python start_celery.py beat
+uv run python start_celery.py flower
 """
 
 from __future__ import annotations

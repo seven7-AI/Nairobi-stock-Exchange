@@ -58,9 +58,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         # Pydantic's own errors name fields and constraints, not values, so they
         # are safe to return — but strip any echoed input just in case.
         errors = [
@@ -92,9 +90,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=HTTPStatus.SERVICE_UNAVAILABLE,
-            content=_body(
-                "DatabaseError", "The data store is temporarily unavailable.", request
-            ),
+            content=_body("DatabaseError", "The data store is temporarily unavailable.", request),
         )
 
     @app.exception_handler(Exception)

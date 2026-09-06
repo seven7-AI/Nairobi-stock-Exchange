@@ -25,9 +25,7 @@ class Instrument(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "instruments"
 
-    ticker_symbol: Mapped[str] = mapped_column(
-        String(24), nullable=False, unique=True, index=True
-    )
+    ticker_symbol: Mapped[str] = mapped_column(String(24), nullable=False, unique=True, index=True)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sector: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     exchange: Mapped[str] = mapped_column(String(16), nullable=False, default="NSE")

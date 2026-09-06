@@ -50,9 +50,7 @@ class PriceBar(UUIDMixin, TimestampMixin, Base):
     previous_close: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     volume: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
-    source: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="stockanalysis_stocks"
-    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="stockanalysis_stocks")
 
     instrument: Mapped[Instrument] = relationship(back_populates="price_bars")
 

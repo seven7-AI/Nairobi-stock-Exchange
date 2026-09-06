@@ -62,9 +62,7 @@ class EmailService:
                 server.login(self._settings.smtp_user, self._settings.smtp_password)
             server.send_message(message)
 
-        logger.info(
-            "email_sent", subject=payload.subject, recipient_domain=recipient_domain
-        )
+        logger.info("email_sent", subject=payload.subject, recipient_domain=recipient_domain)
         return True
 
 

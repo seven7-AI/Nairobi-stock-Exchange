@@ -52,9 +52,7 @@ async def list_instruments(
 
 
 @router.get("/sectors", response_model=SectorList)
-async def list_sectors(
-    session: SessionDep, current_user: CurrentUser = ResearchUser
-) -> SectorList:
+async def list_sectors(session: SessionDep, current_user: CurrentUser = ResearchUser) -> SectorList:
     """Every distinct sector present in the instrument master."""
     sectors = await instrument_service.list_sectors(session)
     return SectorList(sectors=sectors, count=len(sectors))

@@ -43,9 +43,7 @@ async def test_initial_state_is_step_one(client: AsyncClient, org_admin: dict) -
     assert optional == [5]
 
 
-async def test_steps_in_order_complete_the_wizard(
-    client: AsyncClient, org_admin: dict
-) -> None:
+async def test_steps_in_order_complete_the_wizard(client: AsyncClient, org_admin: dict) -> None:
     for step in range(1, 8):
         response = await post_step(client, org_admin["headers"], step)
         assert response.status_code == 200, f"step {step}: {response.text}"
@@ -67,9 +65,7 @@ async def test_out_of_order_step_is_rejected(client: AsyncClient, org_admin: dic
     assert "step 1" in response.json()["message"].lower()
 
 
-async def test_progress_advances_one_step_at_a_time(
-    client: AsyncClient, org_admin: dict
-) -> None:
+async def test_progress_advances_one_step_at_a_time(client: AsyncClient, org_admin: dict) -> None:
     await post_step(client, org_admin["headers"], 1)
     blocked = await post_step(client, org_admin["headers"], 3)
     assert blocked.status_code == 400
@@ -79,9 +75,7 @@ async def test_progress_advances_one_step_at_a_time(
     assert ok.json()["current_step"] == 3
 
 
-async def test_optional_step_five_can_be_skipped(
-    client: AsyncClient, org_admin: dict
-) -> None:
+async def test_optional_step_five_can_be_skipped(client: AsyncClient, org_admin: dict) -> None:
     for step in (1, 2, 3, 4):
         assert (await post_step(client, org_admin["headers"], step)).status_code == 200
 
@@ -115,9 +109,7 @@ async def test_activation_requires_explicit_confirmation(
     assert response.status_code == 400
 
 
-async def test_completed_wizard_rejects_further_steps(
-    client: AsyncClient, org_admin: dict
-) -> None:
+async def test_completed_wizard_rejects_further_steps(client: AsyncClient, org_admin: dict) -> None:
     for step in range(1, 8):
         assert (await post_step(client, org_admin["headers"], step)).status_code == 200
 

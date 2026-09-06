@@ -63,11 +63,13 @@ def inspect_price_history(limit: int = typer.Option(5, min=1, max=20)) -> None:
     logger = get_logger("app.cli.inspect_price_history")
 
     response = conn.execute_with_retry(
-        lambda: conn.client.table(settings.stockanalysis_table)
-        .select("ticker_symbol, company_name, scraped_at, price_history")
-        .order("scraped_at", desc=True)
-        .limit(limit)
-        .execute(),
+        lambda: (
+            conn.client.table(settings.stockanalysis_table)
+            .select("ticker_symbol, company_name, scraped_at, price_history")
+            .order("scraped_at", desc=True)
+            .limit(limit)
+            .execute()
+        ),
         "inspect_price_history",
     )
     rows: list[dict[str, Any]] = list(getattr(response, "data", []))
@@ -104,9 +106,7 @@ def check_feasibility() -> None:
     table.add_row("Partially Calculable", str(summary.get("partially_calculable", 0)))
     table.add_row("Not Calculable", str(summary.get("not_calculable", 0)))
     console.print(table)
-    console.print(
-        f"[cyan]Categories discovered:[/cyan] {len(build_indicator_map(definitions))}"
-    )
+    console.print(f"[cyan]Categories discovered:[/cyan] {len(build_indicator_map(definitions))}")
 
 
 @app.command("pull-data")

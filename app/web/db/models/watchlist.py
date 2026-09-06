@@ -21,9 +21,7 @@ class Watchlist(UUIDMixin, TimestampMixin, Base):
     """A named set of instruments belonging to an organization."""
 
     __tablename__ = "watchlists"
-    __table_args__ = (
-        UniqueConstraint("organization_id", "name", name="uq_watchlist_org_name"),
-    )
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_watchlist_org_name"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -54,9 +52,7 @@ class WatchlistItem(UUIDMixin, TimestampMixin, Base):
     """An instrument's membership in a watchlist."""
 
     __tablename__ = "watchlist_items"
-    __table_args__ = (
-        UniqueConstraint("watchlist_id", "instrument_id", name="uq_watchlist_item"),
-    )
+    __table_args__ = (UniqueConstraint("watchlist_id", "instrument_id", name="uq_watchlist_item"),)
 
     watchlist_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

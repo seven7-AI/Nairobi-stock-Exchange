@@ -1,6 +1,6 @@
 """End-to-end authentication.
 
-    codegraph explore "auth views.py create_access_token decode_token"
+codegraph explore "auth views.py create_access_token decode_token"
 """
 
 from __future__ import annotations
@@ -23,9 +23,7 @@ async def register(client: AsyncClient, email: str, org: str) -> dict:
 
 
 async def login(client: AsyncClient, email: str, password: str = PASSWORD):
-    return await client.post(
-        "/api/v1/auth/login", json={"email": email, "password": password}
-    )
+    return await client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
 async def test_register_creates_org_admin(
@@ -115,9 +113,7 @@ async def test_password_reset_request_does_not_reveal_existence(
     client: AsyncClient, unique_email: str, unique_org_name: str
 ) -> None:
     await register(client, unique_email, unique_org_name)
-    known = await client.post(
-        "/api/v1/auth/password-reset/request", json={"email": unique_email}
-    )
+    known = await client.post("/api/v1/auth/password-reset/request", json={"email": unique_email})
     unknown = await client.post(
         "/api/v1/auth/password-reset/request", json={"email": "nobody@nse-analytics-test.co.ke"}
     )

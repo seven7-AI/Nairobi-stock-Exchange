@@ -101,9 +101,7 @@ async def mark_failed(session: AsyncSession, run: ReportRun, *, error: str) -> R
 
 
 # --- connectors -------------------------------------------------------------
-async def list_connectors(
-    session: AsyncSession, organization_id: uuid.UUID
-) -> list[Connector]:
+async def list_connectors(session: AsyncSession, organization_id: uuid.UUID) -> list[Connector]:
     result = await session.execute(
         select(Connector)
         .where(Connector.organization_id == organization_id)

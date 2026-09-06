@@ -47,9 +47,7 @@ async def read_quote(
     if bar is None:
         raise ResourceNotFoundError(f"No price history for {instrument.ticker_symbol}.")
 
-    change = (
-        bar.close_price - bar.previous_close if bar.previous_close is not None else None
-    )
+    change = bar.close_price - bar.previous_close if bar.previous_close is not None else None
     change_pct = (
         float(change / bar.previous_close * 100)
         if change is not None and bar.previous_close

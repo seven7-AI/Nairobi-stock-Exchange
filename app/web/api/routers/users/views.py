@@ -39,9 +39,7 @@ logger = get_logger("app.web.api.users")
 AdminUser = Depends(require_roles(*ADMIN_ROLES))
 
 
-async def _load_in_scope(
-    session: SessionDep, user_id: uuid.UUID, caller: CurrentUser
-) -> User:
+async def _load_in_scope(session: SessionDep, user_id: uuid.UUID, caller: CurrentUser) -> User:
     user = await user_service.get_user_by_id(session, user_id)
     if user is None:
         raise ResourceNotFoundError(detail=f"user {user_id}")

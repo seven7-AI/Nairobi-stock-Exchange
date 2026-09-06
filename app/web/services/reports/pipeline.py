@@ -172,9 +172,7 @@ PIPELINES = {
 }
 
 
-def run_pipeline(
-    kind: ReportKind, settings: Settings, conn: SupabaseConnection
-) -> PipelineResult:
+def run_pipeline(kind: ReportKind, settings: Settings, conn: SupabaseConnection) -> PipelineResult:
     """Run the pipeline for one report kind."""
     return PIPELINES[kind](settings, conn)
 

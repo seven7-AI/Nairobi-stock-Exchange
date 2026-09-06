@@ -113,9 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api)
     app.include_router(_ops_router(resolved))
 
-    Instrumentator().instrument(app).expose(
-        app, endpoint="/metrics", include_in_schema=False
-    )
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
 
 

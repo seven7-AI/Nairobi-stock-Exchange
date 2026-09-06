@@ -59,9 +59,7 @@ class OnboardingState(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     current_step: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    completed_steps: Mapped[list[int]] = mapped_column(
-        ARRAY(Integer), nullable=False, default=list
-    )
+    completed_steps: Mapped[list[int]] = mapped_column(ARRAY(Integer), nullable=False, default=list)
     skipped_steps: Mapped[list[int]] = mapped_column(ARRAY(Integer), nullable=False, default=list)
     status: Mapped[OnboardingStatus] = mapped_column(
         pg_enum(OnboardingStatus, "onboarding_status"),

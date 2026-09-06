@@ -30,9 +30,7 @@ class UserRole(StrEnum):
 CROSS_ORG_ROLES: frozenset[UserRole] = frozenset({UserRole.PLATFORM_ADMIN})
 
 #: Roles with administrative authority inside a single organization.
-ORG_ADMIN_ROLES: frozenset[UserRole] = frozenset(
-    {UserRole.PLATFORM_ADMIN, UserRole.ORG_ADMIN}
-)
+ORG_ADMIN_ROLES: frozenset[UserRole] = frozenset({UserRole.PLATFORM_ADMIN, UserRole.ORG_ADMIN})
 
 
 class OnboardingStatus(StrEnum):

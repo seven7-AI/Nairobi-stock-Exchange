@@ -66,8 +66,6 @@ _BEAT_SCHEDULE: dict[str, dict[str, Any]] = {
     },
 }
 
-beat_schedule: dict[str, dict[str, Any]] = (
-    _BEAT_SCHEDULE if settings.celery_beat_enabled else {}
-)
+beat_schedule: dict[str, dict[str, Any]] = _BEAT_SCHEDULE if settings.celery_beat_enabled else {}
 
 __all__ = ["beat_schedule", "broker_url", "result_backend", "task_routes"]

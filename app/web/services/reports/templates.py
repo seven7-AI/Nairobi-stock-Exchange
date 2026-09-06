@@ -21,8 +21,7 @@ def _coverage_lines(market_summary: dict[str, Any]) -> list[str]:
     lines = [f"- Instruments Ranked: **{ranked or 0}**"]
     if excluded:
         lines.append(
-            f"- Excluded (no change data): **{excluded}** "
-            "— reported as `N/A`, not ranked as 0.00%"
+            f"- Excluded (no change data): **{excluded}** — reported as `N/A`, not ranked as 0.00%"
         )
     return lines
 

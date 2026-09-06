@@ -87,9 +87,7 @@ async def test_connector(
     current_user.assert_can_access_organization(connector.organization_id)
 
     if connector.connector_type != ConnectorType.SUPABASE or supabase is None:
-        await report_service.set_connector_status(
-            session, connector, ConnectorStatus.UNCONFIGURED
-        )
+        await report_service.set_connector_status(session, connector, ConnectorStatus.UNCONFIGURED)
         return ConnectorTestResult(
             connector_id=connector.id,
             status=ConnectorStatus.UNCONFIGURED,

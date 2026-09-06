@@ -76,9 +76,7 @@ class CursorPage(BaseModel, Generic[T]):
         next_cursor = (
             encode_cursor(cursor_for(items[-1])) if has_more and items and cursor_for else None
         )
-        return cls(
-            items=items, next_cursor=next_cursor, has_more=has_more, page_size=page_size
-        )
+        return cls(items=items, next_cursor=next_cursor, has_more=has_more, page_size=page_size)
 
 
 __all__ = [

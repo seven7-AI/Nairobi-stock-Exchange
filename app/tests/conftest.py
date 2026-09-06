@@ -28,9 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # before anything under app.* is imported.
 os.environ.setdefault("SUPABASE_URL", "https://placeholder.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "placeholder-key")
-os.environ.setdefault(
-    "JWT_SECRET_KEY", "test-secret-not-for-production-at-least-32-bytes-long"
-)
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-not-for-production-at-least-32-bytes-long")
 os.environ.setdefault("ENVIRONMENT", "local")
 # Production uses 12; a few hundred test hashes at that cost dominate the run.
 os.environ.setdefault("BCRYPT_ROUNDS", "4")
@@ -85,9 +83,10 @@ async def client(_configure_database: None) -> AsyncIterator[AsyncClient]:
     from app.web.main import create_app
 
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as http_client, app.router.lifespan_context(app):
+    async with (
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client,
+        app.router.lifespan_context(app),
+    ):
         yield http_client
 
 

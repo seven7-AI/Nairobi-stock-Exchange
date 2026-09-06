@@ -35,18 +35,14 @@ def step_name(step: int) -> str:
     return ONBOARDING_STEPS[step - 1]
 
 
-async def get_state(
-    session: AsyncSession, organization_id: uuid.UUID
-) -> OnboardingState | None:
+async def get_state(session: AsyncSession, organization_id: uuid.UUID) -> OnboardingState | None:
     result = await session.execute(
         select(OnboardingState).where(OnboardingState.organization_id == organization_id)
     )
     return result.scalar_one_or_none()
 
 
-async def get_or_create_state(
-    session: AsyncSession, organization_id: uuid.UUID
-) -> OnboardingState:
+async def get_or_create_state(session: AsyncSession, organization_id: uuid.UUID) -> OnboardingState:
     state = await get_state(session, organization_id)
     if state is not None:
         return state
@@ -71,9 +67,7 @@ def _assert_step_reachable(state: OnboardingState, step: int) -> None:
         )
     if state.can_start_step(step):
         return
-    outstanding = next(
-        prior for prior in range(1, step) if not state.is_step_complete(prior)
-    )
+    outstanding = next(prior for prior in range(1, step) if not state.is_step_complete(prior))
     raise OnboardingStepError(
         f"Step {step} ({step_name(step)}) cannot be started until step "
         f"{outstanding} ({step_name(outstanding)}) is complete.",
@@ -143,9 +137,7 @@ async def _activate_when_finished(session: AsyncSession, state: OnboardingState)
 
 
 def progress_percent(state: OnboardingState) -> float:
-    done = sum(
-        1 for step in range(1, TOTAL_ONBOARDING_STEPS + 1) if state.is_step_complete(step)
-    )
+    done = sum(1 for step in range(1, TOTAL_ONBOARDING_STEPS + 1) if state.is_step_complete(step))
     return round(done / TOTAL_ONBOARDING_STEPS * 100, 1)
 
 

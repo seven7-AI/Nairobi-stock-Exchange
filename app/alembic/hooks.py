@@ -31,6 +31,4 @@ def include_object(
     if type_ == "table" and obj.info.get("skip_autogenerate", False):
         return False
     parent_table = getattr(obj, "table", None)
-    return not (
-        parent_table is not None and parent_table.info.get("skip_autogenerate", False)
-    )
+    return not (parent_table is not None and parent_table.info.get("skip_autogenerate", False))

@@ -52,9 +52,7 @@ async def list_instruments(
     return list(result.scalars().all())
 
 
-async def get_instrument_by_ticker(
-    session: AsyncSession, ticker_symbol: str
-) -> Instrument | None:
+async def get_instrument_by_ticker(session: AsyncSession, ticker_symbol: str) -> Instrument | None:
     result = await session.execute(
         select(Instrument).where(Instrument.ticker_symbol == ticker_symbol.upper())
     )
@@ -91,9 +89,7 @@ async def list_price_bars(
     return list(result.scalars().all())
 
 
-async def get_latest_price_bar(
-    session: AsyncSession, instrument_id: uuid.UUID
-) -> PriceBar | None:
+async def get_latest_price_bar(session: AsyncSession, instrument_id: uuid.UUID) -> PriceBar | None:
     result = await session.execute(
         select(PriceBar)
         .where(PriceBar.instrument_id == instrument_id)
