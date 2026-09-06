@@ -12,6 +12,7 @@ unit suite still runs anywhere.
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -90,6 +91,16 @@ async def client(_configure_database: None) -> AsyncIterator[AsyncClient]:
         yield http_client
 
 
+#: Generated once per session, so no password literal lives in the test suite.
+TEST_PASSWORD = secrets.token_urlsafe(24)
+
+
+@pytest.fixture(scope="session")
+def test_password() -> str:
+    """The password every fixture-created account is registered with."""
+    return TEST_PASSWORD
+
+
 @pytest.fixture
 def unique_email() -> str:
     """An address no other test has used."""
@@ -108,14 +119,14 @@ async def org_admin(client, unique_email: str, unique_org_name: str) -> dict:
         "/api/v1/auth/register",
         json={
             "email": unique_email,
-            "password": "correct horse battery staple",
+            "password": TEST_PASSWORD,
             "organization_name": unique_org_name,
         },
     )
     assert registration.status_code == 201, registration.text
     tokens = await client.post(
         "/api/v1/auth/login",
-        json={"email": unique_email, "password": "correct horse battery staple"},
+        json={"email": unique_email, "password": TEST_PASSWORD},
     )
     assert tokens.status_code == 200, tokens.text
     return {
@@ -132,7 +143,7 @@ async def token_for_role(client, org_admin: dict):
 
     async def _make(role: str) -> dict:
         email = f"{role}-{uuid.uuid4().hex[:10]}@nse-analytics-test.co.ke"
-        password = "correct horse battery staple"
+        password = TEST_PASSWORD
         created = await client.post(
             "/api/v1/users",
             headers=org_admin["headers"],

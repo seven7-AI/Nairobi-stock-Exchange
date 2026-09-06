@@ -11,6 +11,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from app.tests.conftest import TEST_PASSWORD
+
 pytestmark = [pytest.mark.integration]
 
 ALL_ROLES = (
@@ -114,7 +116,7 @@ async def test_org_admin_cannot_create_a_platform_admin(
         headers=org_admin["headers"],
         json={
             "email": unique_email,
-            "password": "correct horse battery staple",
+            "password": TEST_PASSWORD,
             "role": "platform_admin",
         },
     )

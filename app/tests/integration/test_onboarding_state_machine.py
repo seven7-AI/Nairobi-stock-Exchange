@@ -128,7 +128,10 @@ async def test_connector_config_rejects_inline_secrets(
         json={
             "connector_type": "supabase",
             "name": "Leaky",
-            "config": {"api_key": "sbp_should_not_be_here"},
+            # The validator matches on the *key name*, so the value need not
+            # look like a real credential - and must not, or the secret
+            # scanner flags this very test.
+            "config": {"api_key": "placeholder-value"},
         },
     )
     assert response.status_code == 422

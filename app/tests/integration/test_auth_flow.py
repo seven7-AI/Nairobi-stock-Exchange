@@ -8,9 +8,11 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from app.tests.conftest import TEST_PASSWORD
+
 pytestmark = [pytest.mark.integration]
 
-PASSWORD = "correct horse battery staple"
+PASSWORD = TEST_PASSWORD
 
 
 async def register(client: AsyncClient, email: str, org: str) -> dict:
