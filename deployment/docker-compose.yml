@@ -20,6 +20,11 @@ x-app: &app
   volumes:
     - ../reports:/srv/app/reports
     - ../research/data:/srv/app/research/data:ro
+    # The nse-stock-scraper project's daily output. Mounted READ-ONLY: nse-be
+    # reads another project's database and must never be able to write to it.
+    # The source also opens it with SQLite's mode=ro, so the guarantee holds
+    # even if this mount were ever loosened.
+    - ${NSE_SCRAPER_HOST_PATH:-../../nse-stock-scraper}:/srv/scraper:ro
     - app-logs:/srv/app/logs
   restart: unless-stopped
 

@@ -122,10 +122,36 @@ Reports land in `reports/{daily,weekly,monthly}/`.
 
 ## Data sources
 
-**`stockanalysis_stocks`** is the live upstream table. **It is written by an
-external scraper outside this repo.** It is mapped read-only and excluded from
-Alembic autogenerate — a migration touching it is a bug in the exclusion hook,
-and CI fails the build if one appears.
+Market data comes from the **`~/nse-stock-scraper`** project — a separate repo that runs
+a daily Scrapy job under cron and writes to its own local SQLite database. `nse-be`
+reads that database **read-only** and duplicates none of its logic.
+
+```text
+~/nse-stock-scraper  ──daily scrape──▶  data/nse_scraper.sqlite3
+                                                │
+                                                │ read-only pull
+                                                ▼
+                                   nse-be  NseScraperSource
+                                                │
+                                                ▼
+                              indicators · reports · future agents
+```
+
+```bash
+uv run nse-analysis inspect-source     # path, freshness, quality gate, history depth
+GET /api/v1/market-data/source         # source info + health
+GET /api/v1/market-data/scraped        # raw latest rows
+```
+
+See **[docs/data-sources.md](docs/data-sources.md)** for the full picture: what the
+scraper produces, where it stores it, how `nse-be` reads it, and the configuration.
+
+**Supabase is registered but no longer used for market data.** The scraper switched to
+a SQLite backend and its Supabase writes had been failing daily since July — which is
+also why weekly and monthly reports used to render `0.00%`.
+
+**`stockanalysis_stocks`** is also mapped read-only as a Postgres model and excluded
+from Alembic autogenerate — a migration touching it is a bug in the exclusion hook.
 
 **`research/`** holds the cleaned 18-year archive built from `NSE_DATA/`:
 `canonical_nse_prices.parquet` (267,310 rows, 2007-01-02 → 2024-12-31) and

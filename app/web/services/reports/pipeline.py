@@ -28,7 +28,7 @@ from app.web.services.indicators.calculator import (
 from app.web.services.indicators.feasibility import analyze_feasibility, summarize_feasibility
 from app.web.services.indicators.registry import parse_indicators
 from app.web.services.market_data.fetcher import DataFetcher
-from app.web.services.market_data.supabase_client import SupabaseConnection
+from app.web.services.market_data.sources.base import MarketDataSource
 from app.web.services.market_data.validator import validate_merged_rows
 from app.web.services.reports.generator import (
     write_daily_report,
@@ -61,21 +61,22 @@ class MarketData:
     validation: dict[str, Any]
 
 
-def load_market_data(settings: Settings, conn: SupabaseConnection) -> MarketData:
+def load_market_data(settings: Settings, source: MarketDataSource) -> MarketData:
     """Fetch, deduplicate, validate and compute indicators — one upstream pass.
 
-    ``merged_rows`` is handed to ``load_historical_from_supabase`` rather than
-    letting it re-fetch, which previously doubled every pipeline's reads.
+    ``merged_rows`` is handed to ``load_historical`` rather than letting it
+    re-fetch, which previously doubled every pipeline's reads.
     """
-    fetcher = DataFetcher(settings, conn)
+    fetcher = DataFetcher(settings, source)
     analysis_rows = fetcher.fetch_daily_window(as_of_utc=datetime.now(tz=UTC))
     merged_rows = fetcher.merge_current_data(analysis_rows)
     validation = validate_merged_rows(merged_rows)
-    historical = fetcher.load_historical_from_supabase(merged_rows)
+    historical = fetcher.load_historical(merged_rows)
     calculated = calculate_batch(merged_rows, historical)
 
     logger.info(
         "market_data_loaded",
+        source=source.name,
         merged_rows=len(merged_rows),
         calculated_rows=len(calculated),
         historical_rows=len(historical),
@@ -87,13 +88,14 @@ def load_market_data(settings: Settings, conn: SupabaseConnection) -> MarketData
     )
 
 
-def run_daily_pipeline(settings: Settings, conn: SupabaseConnection) -> PipelineResult:
+def run_daily_pipeline(settings: Settings, source: MarketDataSource) -> PipelineResult:
     """Pull, validate, calculate and render the daily report."""
-    data = load_market_data(settings, conn)
+    data = load_market_data(settings, source)
 
     definitions = parse_indicators(settings.indicators_file)
     feasibility_records = analyze_feasibility(definitions)
     market_summary = classify_market_insights(data.calculated)
+    market_summary["data_source"] = source.name
 
     report_path = write_daily_report(
         settings=settings,
@@ -115,10 +117,11 @@ def run_daily_pipeline(settings: Settings, conn: SupabaseConnection) -> Pipeline
     )
 
 
-def run_weekly_pipeline(settings: Settings, conn: SupabaseConnection) -> PipelineResult:
+def run_weekly_pipeline(settings: Settings, source: MarketDataSource) -> PipelineResult:
     """Render the weekly report for the trailing seven days."""
-    data = load_market_data(settings, conn)
+    data = load_market_data(settings, source)
     market_summary = classify_weekly_market_insights(data.calculated)
+    market_summary["data_source"] = source.name
 
     week_end = datetime.now(tz=UTC).date()
     week_start = week_end - timedelta(days=6)
@@ -140,10 +143,11 @@ def run_weekly_pipeline(settings: Settings, conn: SupabaseConnection) -> Pipelin
     )
 
 
-def run_monthly_pipeline(settings: Settings, conn: SupabaseConnection) -> PipelineResult:
+def run_monthly_pipeline(settings: Settings, source: MarketDataSource) -> PipelineResult:
     """Render the monthly report for the current calendar month."""
-    data = load_market_data(settings, conn)
+    data = load_market_data(settings, source)
     market_summary = classify_monthly_market_insights(data.calculated)
+    market_summary["data_source"] = source.name
 
     now = datetime.now(tz=UTC)
     report_path = write_monthly_report(
@@ -172,9 +176,9 @@ PIPELINES = {
 }
 
 
-def run_pipeline(kind: ReportKind, settings: Settings, conn: SupabaseConnection) -> PipelineResult:
+def run_pipeline(kind: ReportKind, settings: Settings, source: MarketDataSource) -> PipelineResult:
     """Run the pipeline for one report kind."""
-    return PIPELINES[kind](settings, conn)
+    return PIPELINES[kind](settings, source)
 
 
 __all__ = [

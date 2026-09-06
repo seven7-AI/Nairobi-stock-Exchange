@@ -16,7 +16,7 @@ from app.web.config import get_settings
 from app.web.db.base import get_sync_session_factory
 from app.web.db.models.enums import ReportKind, ReportRunStatus
 from app.web.db.models.report_run import ReportRun
-from app.web.services.market_data.supabase_client import SupabaseConnection
+from app.web.services.market_data.sources import build_market_data_source
 from app.web.services.reports.pipeline import run_pipeline
 from app.web.utils.logger import get_logger
 
@@ -53,8 +53,8 @@ def generate_report_task(self: Any, run_id: str, kind: str) -> dict[str, Any]:
         session.commit()
 
         try:
-            conn = SupabaseConnection(settings)
-            result = run_pipeline(report_kind, settings, conn)
+            source = build_market_data_source(settings)
+            result = run_pipeline(report_kind, settings, source)
         except Exception as exc:
             # type name only: the message can carry a host or a key
             session.rollback()

@@ -32,7 +32,7 @@ from app.web.db.base import get_sync_session_factory
 from app.web.db.models.instrument import Instrument
 from app.web.db.models.price_bar import PriceBar
 from app.web.services.market_data.fetcher import DataFetcher
-from app.web.services.market_data.supabase_client import SupabaseConnection
+from app.web.services.market_data.sources import build_market_data_source
 from app.web.utils.logger import get_logger
 
 logger = get_logger("app.celery_app.tasks.ingest_tasks")
@@ -179,12 +179,88 @@ def backfill_price_bars_from_parquet(start_year: int | None = None) -> dict[str,
     }
 
 
+@celery_app.task(name="app.celery_app.tasks.ingest_tasks.backfill_price_bars_from_scraper")
+def backfill_price_bars_from_scraper() -> dict[str, Any]:
+    """Load each ticker's ``price_history`` from the scraper into ``price_bars``.
+
+    The scraper keeps one row per ticker with its history in a JSON array, which
+    the report pipeline reads directly. This task copies that history into our
+    own ``price_bars`` table so SQL-side analytics, indicator snapshots and
+    future agents can query it without re-reading another project's database.
+
+    Idempotent: ON CONFLICT DO NOTHING on (instrument_id, bar_date), so running
+    it twice inserts nothing the second time.
+    """
+    settings = get_settings()
+    source = build_market_data_source(settings)
+    rows = source.fetch_latest_rows(limit=2000)
+
+    session_factory = get_sync_session_factory()
+    inserted = 0
+    unknown: list[str] = []
+    tickers_with_history = 0
+
+    with session_factory() as session:
+        ids = _instrument_ids(session)
+        batch: list[dict[str, Any]] = []
+        for row in rows:
+            ticker = str(row.get("ticker_symbol", "")).strip().upper()
+            instrument_id = ids.get(ticker)
+            if instrument_id is None:
+                unknown.append(ticker)
+                continue
+            history = row.get("price_history")
+            if not isinstance(history, list) or not history:
+                continue
+            tickers_with_history += 1
+            for entry in history:
+                if not isinstance(entry, dict):
+                    continue
+                close = _to_decimal(entry.get("stock_price") or entry.get("price"))
+                raw_date = entry.get("scraped_at") or entry.get("date")
+                if close is None or not raw_date:
+                    continue
+                try:
+                    bar_date = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00")).date()
+                except ValueError:
+                    continue
+                change = _to_decimal(entry.get("stock_change"))
+                batch.append(
+                    {
+                        "instrument_id": instrument_id,
+                        "bar_date": bar_date,
+                        "close_price": close,
+                        "previous_close": (close - change) if change is not None else None,
+                        "source": "nse_scraper",
+                    }
+                )
+                if len(batch) >= BATCH_SIZE:
+                    inserted += _upsert_bars(session, batch)
+                    session.commit()
+                    batch = []
+        inserted += _upsert_bars(session, batch)
+        session.commit()
+
+    logger.info(
+        "price_bars_backfilled_from_scraper",
+        inserted=inserted,
+        tickers_with_history=tickers_with_history,
+        unknown_tickers=len(unknown),
+    )
+    return {
+        "status": "ok",
+        "inserted": inserted,
+        "tickers_with_history": tickers_with_history,
+        "unknown_tickers": unknown[:20],
+    }
+
+
 @celery_app.task(name="app.celery_app.tasks.ingest_tasks.ingest_latest_prices")
 def ingest_latest_prices() -> dict[str, Any]:
     """Append today's close for every ticker from the upstream table."""
     settings = get_settings()
-    conn = SupabaseConnection(settings)
-    fetcher = DataFetcher(settings, conn)
+    source = build_market_data_source(settings)
+    fetcher = DataFetcher(settings, source)
 
     analysis_rows = fetcher.fetch_daily_window(as_of_utc=datetime.now(tz=UTC))
     merged_rows = fetcher.merge_current_data(analysis_rows)
@@ -239,6 +315,7 @@ def ingest_latest_prices() -> dict[str, Any]:
 
 __all__ = [
     "backfill_price_bars_from_parquet",
+    "backfill_price_bars_from_scraper",
     "ingest_latest_prices",
     "seed_instruments",
 ]

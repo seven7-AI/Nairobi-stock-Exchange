@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.web.config import Settings, get_settings
 from app.web.db.base import build_async_engine, build_async_session_factory
 from app.web.services.email import EmailService
+from app.web.services.market_data.sources import MarketDataSource, build_market_data_source
 from app.web.services.market_data.supabase_client import SupabaseConnection
 from app.web.services.redis import RedisService
 from app.web.services.storage import StorageService
@@ -38,6 +39,11 @@ class AppState:
     redis: RedisService
     email: EmailService
     storage: StorageService
+    #: Where raw NSE market data comes from - the nse-stock-scraper project's
+    #: daily SQLite output. See services/market_data/sources/registry.py.
+    market_data_source: MarketDataSource
+    #: Retained only so the connectors API can describe and test a Supabase link.
+    #: Nothing reads market data through it.
     supabase: SupabaseConnection | None = None
 
 
@@ -65,6 +71,7 @@ def build_app_state(settings: Settings | None = None) -> AppState:
         redis=RedisService.from_settings(resolved),
         email=EmailService(resolved),
         storage=StorageService(resolved),
+        market_data_source=build_market_data_source(resolved),
         supabase=supabase,
     )
 
@@ -121,11 +128,17 @@ def get_supabase(request: Request) -> SupabaseConnection | None:
     return get_state(request).supabase
 
 
+def get_market_data_source(request: Request) -> MarketDataSource:
+    """The wired NSE market-data source."""
+    return get_state(request).market_data_source
+
+
 __all__ = [
     "AppState",
     "build_app_state",
     "get_app_state",
     "get_email",
+    "get_market_data_source",
     "get_redis",
     "get_settings_dep",
     "get_state",

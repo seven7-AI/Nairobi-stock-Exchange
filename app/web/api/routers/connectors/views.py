@@ -18,10 +18,13 @@ from app.web.api.routers.connectors.schema import (
     ConnectorRead,
     ConnectorTestResult,
 )
+from app.web.config import Settings
 from app.web.core.exceptions import ResourceNotFoundError
 from app.web.core.security import ADMIN_ROLES, require_roles
+from app.web.db.models.connector import Connector
 from app.web.db.models.enums import ConnectorStatus, ConnectorType
 from app.web.db.services import report_service
+from app.web.services.market_data.sources import NseScraperSource
 from app.web.utils.logger import get_logger
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -86,6 +89,9 @@ async def test_connector(
         raise ResourceNotFoundError(detail=f"connector {connector_id}")
     current_user.assert_can_access_organization(connector.organization_id)
 
+    if connector.connector_type == ConnectorType.SCRAPER:
+        return await _test_scraper(session, connector, settings)
+
     if connector.connector_type != ConnectorType.SUPABASE or supabase is None:
         await report_service.set_connector_status(session, connector, ConnectorStatus.UNCONFIGURED)
         return ConnectorTestResult(
@@ -120,6 +126,47 @@ async def test_connector(
         status=ConnectorStatus.CONNECTED,
         reachable=True,
         message="Connected.",
+    )
+
+
+async def _test_scraper(
+    session: SessionDep, connector: Connector, settings: Settings
+) -> ConnectorTestResult:
+    """Reachability for the NSE scraper source.
+
+    Reports staleness as a distinct outcome from unreachable: the scraper runs
+    once a day, so a readable but un-refreshed database is a real failure that a
+    plain boolean would hide.
+    """
+    health = NseScraperSource(settings).health_check()
+    if not health.reachable:
+        await report_service.set_connector_status(
+            session, connector, ConnectorStatus.ERROR, error=health.detail
+        )
+        return ConnectorTestResult(
+            connector_id=connector.id,
+            status=ConnectorStatus.ERROR,
+            reachable=False,
+            message="The NSE scraper output could not be read.",
+        )
+
+    if health.is_stale:
+        await report_service.set_connector_status(
+            session, connector, ConnectorStatus.ERROR, error=f"stale by {health.age_hours}h"
+        )
+        return ConnectorTestResult(
+            connector_id=connector.id,
+            status=ConnectorStatus.ERROR,
+            reachable=True,
+            message=f"Readable, but the last scrape is {health.age_hours}h old.",
+        )
+
+    await report_service.set_connector_status(session, connector, ConnectorStatus.CONNECTED)
+    return ConnectorTestResult(
+        connector_id=connector.id,
+        status=ConnectorStatus.CONNECTED,
+        reachable=True,
+        message=f"Connected. Newest scrape {health.age_hours}h old.",
     )
 
 

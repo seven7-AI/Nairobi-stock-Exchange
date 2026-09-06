@@ -152,11 +152,21 @@ def _ops_router(settings: Settings) -> APIRouter:
             logger.warning("readiness_database_unreachable")
             database_ok = False
 
+        # The market-data source is reported in full rather than as a bool: an
+        # operator needs to tell "cannot read it" from "read it, but nothing has
+        # refreshed it since Tuesday". Both are unhealthy, for different reasons.
+        try:
+            source_health = state.market_data_source.health_check().to_dict()
+        except Exception:
+            logger.warning("readiness_market_data_source_unreachable")
+            source_health = {"name": state.market_data_source.name, "status": "unreachable"}
+
+        source_ok = source_health.get("status") == "ok"
         return {
-            "status": "ok" if (redis_ok and database_ok) else "degraded",
+            "status": "ok" if (redis_ok and database_ok and source_ok) else "degraded",
             "redis": redis_ok,
             "database": database_ok,
-            "upstream_market_data": state.supabase is not None,
+            "market_data_source": source_health,
         }
 
     return router

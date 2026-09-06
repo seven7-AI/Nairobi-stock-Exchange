@@ -42,6 +42,7 @@ codegraph explore "how does onboarding step validation work"  # the 7-step machi
 codegraph explore "calculate_for_row price_bar.py"            # indicator math + its inputs
 codegraph explore "get_async_session AppState lifespan"       # DI wiring
 codegraph explore "report_tasks.py write_daily_report"        # Celery -> service path
+codegraph explore "NseScraperSource MarketDataSource registry"  # where market data comes from
 codegraph explore "StockAnalysisStock external read-only"     # the scraper-owned table
 ```
 
@@ -232,6 +233,14 @@ indicator_snapshots — computed indicator payloads per ticker per date
 report_runs         — daily/weekly/monthly report execution records
 connectors          — data-source integration config per org
 ```
+
+**Market data does not come from Postgres at all.** It comes from the
+`~/nse-stock-scraper` project's daily SQLite output, read through
+`MarketDataSource` (`app/web/services/market_data/sources/`). See
+`docs/data-sources.md`. Never add a second read path to another project's storage —
+extend the source instead.
+
+> Before touching market data: `codegraph explore "NseScraperSource MarketDataSource DataFetcher"`
 
 **Table we do NOT own:**
 

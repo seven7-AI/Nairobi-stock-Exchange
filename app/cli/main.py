@@ -15,19 +15,22 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from app.web.api.routers.market_data.views import MONTHLY_WINDOW, WEEKLY_WINDOW
 from app.web.config import Settings, get_settings
 from app.web.db.models.enums import ReportKind
-from app.web.db.services.metadata_service import inspect_all
 from app.web.services.indicators.feasibility import analyze_feasibility, summarize_feasibility
 from app.web.services.indicators.registry import build_indicator_map, parse_indicators
 from app.web.services.market_data.fetcher import DataFetcher
-from app.web.services.market_data.supabase_client import SupabaseConnection
+from app.web.services.market_data.sources import (
+    MarketDataSource,
+    NseScraperSource,
+    build_market_data_source,
+)
 from app.web.services.reports.pipeline import load_market_data, run_pipeline
 from app.web.utils.logger import configure_logging, get_logger
 
@@ -35,46 +38,115 @@ app = typer.Typer(help="NSE Analytics backend CLI")
 console = Console()
 
 
-def _bootstrap() -> tuple[Settings, SupabaseConnection]:
+def _bootstrap() -> tuple[Settings, MarketDataSource]:
+    """Settings plus the wired market-data source.
+
+    The source is the ``~/nse-stock-scraper`` project's daily SQLite output; see
+    ``app/web/services/market_data/sources/registry.py``.
+    """
     settings = get_settings()
     configure_logging(settings.logs_dir / "nse_be.log", settings.log_level)
-    return settings, SupabaseConnection(settings)
+    return settings, build_market_data_source(settings)
 
 
-@app.command("inspect-metadata")
-def inspect_metadata(output_file: Path | None = None) -> None:
-    """Inspect Supabase table metadata and sample JSON structures."""
-    settings, conn = _bootstrap()
-    logger = get_logger("app.cli.inspect_metadata")
-    payload = json.dumps(inspect_all(settings, conn), indent=2, default=str)
+@app.command("inspect-source")
+def inspect_source(output_file: Path | None = None) -> None:
+    """Inspect the configured NSE market-data source.
+
+    Reports where the data comes from, how fresh it is, whether the scraper's own
+    quality gate passed, and how deep each ticker's price history runs - which is
+    what decides whether weekly and monthly indicators can be computed at all.
+    """
+    _settings, source = _bootstrap()
+    logger = get_logger("app.cli.inspect_source")
+    health = source.health_check()
+
+    console.print(f"[bold cyan]Market data source:[/bold cyan] {health.name}")
+    console.print(f"  Location : {health.location}")
+    console.print(f"  Status   : {_status_markup(health.status)}")
+    console.print(f"  Detail   : {health.detail}")
+    if health.newest_scraped_at:
+        console.print(
+            f"  Newest   : {health.newest_scraped_at.isoformat()} "
+            f"({health.age_hours}h ago{', STALE' if health.is_stale else ''})"
+        )
+    if health.quality_ok is not None:
+        verdict = "passed" if health.quality_ok else "[red]FAILED[/red]"
+        console.print(f"  Last scrape quality gate: {verdict}")
+
+    if health.tables:
+        table = Table(title="Tables")
+        table.add_column("Table")
+        table.add_column("Rows", justify="right")
+        table.add_column("Newest scraped_at")
+        for stat in health.tables:
+            table.add_row(
+                stat.name,
+                str(stat.row_count),
+                stat.newest_scraped_at.isoformat() if stat.newest_scraped_at else "N/A",
+            )
+        console.print(table)
+
+    if isinstance(source, NseScraperSource):
+        _print_scraper_detail(source)
+
     if output_file:
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(payload, encoding="utf-8")
-        console.print(f"[green]Metadata report written:[/green] {output_file}")
-    else:
-        console.print(payload)
-    logger.info("metadata_inspected", output_file=str(output_file) if output_file else None)
+        output_file.write_text(json.dumps(health.to_dict(), indent=2), encoding="utf-8")
+        console.print(f"[green]Source report written:[/green] {output_file}")
+
+    logger.info("source_inspected", source=health.name, status=health.status)
+
+
+def _status_markup(status: str) -> str:
+    colour = {"ok": "green", "stale": "yellow", "degraded": "yellow"}.get(status, "red")
+    return f"[{colour}]{status}[/{colour}]"
+
+
+def _print_scraper_detail(source: NseScraperSource) -> None:
+    """Scraper-specific detail: history depth, quality gate, failed writes."""
+    depth = source.price_history_depth()
+    if depth:
+        weekly = sum(count for entries, count in depth.items() if entries >= WEEKLY_WINDOW)
+        monthly = sum(count for entries, count in depth.items() if entries >= MONTHLY_WINDOW)
+        total = sum(depth.values())
+        console.print("\n[bold]Price history depth[/bold] (observations per ticker)")
+        console.print(f"  {'entries':>8}  tickers")
+        for entries, count in sorted(depth.items()):
+            console.print(f"  {entries:>8}  {count}")
+        console.print(
+            f"  [cyan]{weekly}/{total}[/cyan] tickers support weekly (>={WEEKLY_WINDOW}), "
+            f"[cyan]{monthly}/{total}[/cyan] support monthly (>={MONTHLY_WINDOW})"
+        )
+
+    gate = source.read_quality_gate()
+    if gate:
+        console.print("\n[bold]Last run per spider[/bold]")
+        for spider, report in sorted(gate.items()):
+            ok = "[green]OK[/green]" if report.get("quality_ok") else "[red]FAILED[/red]"
+            console.print(
+                f"  {spider:24s} {ok}  items={report.get('item_scraped_count')} "
+                f"db_ok={report.get('db_upsert_ok')} db_failed={report.get('db_upsert_failed')} "
+                f"finished={report.get('finished_at')}"
+            )
+
+    dates = source.list_fallback_dates()
+    if dates:
+        today = source.read_fallback_records()
+        console.print(
+            f"\n[bold]Failed writes[/bold]: {len(dates)} day(s) with fallback files, "
+            f"newest {dates[0]} ({len(today)} record(s) for today)"
+        )
 
 
 @app.command("inspect-price-history")
 def inspect_price_history(limit: int = typer.Option(5, min=1, max=20)) -> None:
-    """Inspect the price_history structure in the stockanalysis_stocks table."""
-    settings, conn = _bootstrap()
+    """Inspect the price_history structure the source provides."""
+    _settings, source = _bootstrap()
     logger = get_logger("app.cli.inspect_price_history")
+    rows = source.fetch_latest_rows(limit=limit)
 
-    response = conn.execute_with_retry(
-        lambda: (
-            conn.client.table(settings.stockanalysis_table)
-            .select("ticker_symbol, company_name, scraped_at, price_history")
-            .order("scraped_at", desc=True)
-            .limit(limit)
-            .execute()
-        ),
-        "inspect_price_history",
-    )
-    rows: list[dict[str, Any]] = list(getattr(response, "data", []))
-
-    console.print(f"[cyan]Sample price_history data ({len(rows)} rows):[/cyan]\n")
+    console.print(f"[cyan]Sample price_history from {source.name} ({len(rows)} rows):[/cyan]\n")
     for row in rows:
         history = row.get("price_history")
         console.print(f"[bold]{row.get('ticker_symbol', 'N/A')}[/bold] - {row.get('company_name')}")
@@ -89,7 +161,7 @@ def inspect_price_history(limit: int = typer.Option(5, min=1, max=20)) -> None:
             console.print(f"  Keys: {list(history)}")
         console.print()
 
-    logger.info("price_history_inspected", rows=len(rows))
+    logger.info("price_history_inspected", source=source.name, rows=len(rows))
 
 
 @app.command("check-feasibility")
@@ -112,23 +184,23 @@ def check_feasibility() -> None:
 @app.command("pull-data")
 def pull_data() -> None:
     """Pull the latest source rows from the stockanalysis_stocks table."""
-    settings, conn = _bootstrap()
-    rows = DataFetcher(settings, conn).fetch_daily_window()
-    console.print(f"[green]Pulled rows[/green] {settings.stockanalysis_table}={len(rows)}")
+    settings, source = _bootstrap()
+    rows = DataFetcher(settings, source).fetch_daily_window()
+    console.print(f"[green]Pulled rows[/green] source={source.name} rows={len(rows)}")
 
 
 @app.command("calculate-indicators")
 def calculate_indicators(limit: int = typer.Option(100, min=1, max=2000)) -> None:
     """Calculate core market indicators for the latest rows."""
-    settings, conn = _bootstrap()
-    data = load_market_data(settings, conn)
+    settings, source = _bootstrap()
+    data = load_market_data(settings, source)
     console.print(f"[green]Calculated indicator rows:[/green] {len(data.calculated[:limit])}")
 
 
 def _generate(kind: ReportKind, label: str) -> None:
-    settings, conn = _bootstrap()
+    settings, source = _bootstrap()
     logger = get_logger(f"app.cli.generate_{kind.value}")
-    result = run_pipeline(kind, settings, conn)
+    result = run_pipeline(kind, settings, source)
     logger.info(
         f"{kind.value}_report_generated",
         report_path=str(result.report_path),
@@ -169,6 +241,14 @@ def generate_monthly_report() -> None:
 def seed_instruments() -> None:
     """Seed the instrument master from research/data/ticker_master.parquet."""
     from app.celery_app.tasks.ingest_tasks import seed_instruments as task
+
+    console.print(task())
+
+
+@app.command("backfill-from-scraper")
+def backfill_from_scraper() -> None:
+    """Load the scraper's price_history into nse-be's own price_bars table."""
+    from app.celery_app.tasks.ingest_tasks import backfill_price_bars_from_scraper as task
 
     console.print(task())
 

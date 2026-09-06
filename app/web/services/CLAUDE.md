@@ -28,9 +28,32 @@ without checking that list is the most likely way to break this codebase.
 - Callers pass data in. A service must not re-fetch something its caller already has —
   that pattern caused a duplicate Supabase round-trip in the previous architecture.
 
+## The market-data source
+
+Raw NSE data comes from the **`~/nse-stock-scraper`** project's daily SQLite output,
+never from Postgres and no longer from Supabase. It is reached through the
+`MarketDataSource` protocol in `market_data/sources/`.
+
+```bash
+codegraph explore "NseScraperSource MarketDataSource build_market_data_source"
+```
+
+Rules:
+
+- **Read-only, always.** The scraper's database belongs to another project. It is opened
+  with `mode=ro` and bind-mounted `:ro`. Never add a write path.
+- **Never copy scraper logic into this repo.** The coupling is one file path plus two
+  artifact directories, and it stays that way.
+- **New consumers depend on the protocol, not the implementation.** Indicators, agents
+  and analytics must not know the source is SQLite; swapping it should not touch them.
+- **Decode, do not transform.** The JSON columns are decoded because SQLite stores them
+  as TEXT. That restores the original shape - it is not a transformation, and nothing
+  else should be one.
+
 ## Layout
 
 ```
+market_data/sources/   WHERE market data comes from - see below
 redis/        cache client + key helpers
 email/        transactional email (verify, invite, reset, report delivery)
 storage/      report artifact storage

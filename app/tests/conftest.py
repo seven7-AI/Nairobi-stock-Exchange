@@ -66,11 +66,18 @@ def database_url() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _configure_database(database_url: str) -> Iterator[None]:
-    """Point Settings at the test database for the whole session."""
-    os.environ["DATABASE_URL"] = database_url
+def _configure_database() -> Iterator[None]:
+    """Point Settings at the test database when one is configured.
+
+    Deliberately does NOT depend on the skipping ``database_url`` fixture. As an
+    autouse session fixture, doing so skipped the entire suite - unit tests
+    included - whenever TEST_DATABASE_URL was unset, which is exactly the
+    environment unit tests are supposed to run in.
+    """
     from app.web.config import get_settings
 
+    if TEST_DATABASE_URL:
+        os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

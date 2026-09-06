@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.web.config import Settings
 from app.web.core.dependencies import (
     get_email,
+    get_market_data_source,
     get_redis,
     get_settings_dep,
     get_storage,
@@ -24,6 +25,7 @@ from app.web.core.dependencies import (
 from app.web.core.security.rbac import CurrentUser, CurrentUserDep, get_current_user
 from app.web.db.base import get_async_session
 from app.web.services.email import EmailService
+from app.web.services.market_data.sources import MarketDataSource
 from app.web.services.market_data.supabase_client import SupabaseConnection
 from app.web.services.redis import RedisService
 from app.web.services.storage import StorageService
@@ -34,11 +36,13 @@ RedisDep = Annotated[RedisService, Depends(get_redis)]
 EmailDep = Annotated[EmailService, Depends(get_email)]
 StorageDep = Annotated[StorageService, Depends(get_storage)]
 SupabaseDep = Annotated[SupabaseConnection | None, Depends(get_supabase)]
+MarketDataSourceDep = Annotated[MarketDataSource, Depends(get_market_data_source)]
 
 __all__ = [
     "CurrentUser",
     "CurrentUserDep",
     "EmailDep",
+    "MarketDataSourceDep",
     "RedisDep",
     "SessionDep",
     "SettingsDep",

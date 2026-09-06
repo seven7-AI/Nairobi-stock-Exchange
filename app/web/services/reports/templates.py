@@ -7,6 +7,16 @@ from typing import Any
 from app.web.services.reports.formatter import fmt_number, fmt_percent
 
 
+def _data_source(market_summary: dict[str, Any]) -> str:
+    """Name the source the numbers actually came from.
+
+    This line used to be the hardcoded string `stockanalysis_stocks`, which named
+    a table rather than a source and stayed correct only by luck. The pipeline
+    now stamps the real source onto the summary.
+    """
+    return str(market_summary.get("data_source") or "unknown")
+
+
 def _coverage_lines(market_summary: dict[str, Any]) -> list[str]:
     """Disclose how many instruments were ranked, and how many were left out.
 
@@ -42,7 +52,7 @@ def render_daily_markdown(
     lines.append(f"# NSE Daily Market Report - {report_date}")
     lines.append("")
     lines.append(f"- Generated At (UTC): `{generated_at}`")
-    lines.append("- Data Sources: `stockanalysis_stocks`")
+    lines.append(f"- Data Source: `{_data_source(market_summary)}`")
     lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
     lines.append("")
     lines.append("## Executive Summary")
@@ -125,7 +135,7 @@ def render_weekly_markdown(
     lines.append(f"# NSE Weekly Market Report - Week Ending {week_end_date}")
     lines.append("")
     lines.append(f"- Generated At (UTC): `{generated_at}`")
-    lines.append("- Data Sources: `stockanalysis_stocks`")
+    lines.append(f"- Data Source: `{_data_source(market_summary)}`")
     lines.append(f"- Week Period: `{week_start_date}` to `{week_end_date}`")
     lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
     lines.append("")
@@ -211,7 +221,7 @@ def render_monthly_markdown(
     lines.append(f"# NSE Monthly Market Report - {month_name} {year}")
     lines.append("")
     lines.append(f"- Generated At (UTC): `{generated_at}`")
-    lines.append("- Data Sources: `stockanalysis_stocks`")
+    lines.append(f"- Data Source: `{_data_source(market_summary)}`")
     lines.append(f"- Month: `{month_name} {year}`")
     lines.append(f"- Stocks Analyzed: `{len(indicator_rows)}`")
     lines.append("")

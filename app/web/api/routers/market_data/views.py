@@ -12,17 +12,20 @@ from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, Query
 
-from app.web.api.deps import CurrentUser, SessionDep
+from app.web.api.deps import CurrentUser, MarketDataSourceDep, SessionDep
 from app.web.api.pagination import Cursor, CursorPage, PageSize, decode_cursor
 from app.web.api.routers.market_data.schema import (
     HistoryCoverage,
+    MarketDataSourceRead,
     PriceBarRead,
     QuoteRead,
+    ScrapedRow,
+    SourceTableRead,
 )
 from app.web.core.exceptions import ResourceNotFoundError
 from app.web.core.security import MARKET_DATA_ROLES, require_roles
 from app.web.db.services import instrument_service
-from app.web.utils.datetime_utils import cursor_date
+from app.web.utils.datetime_utils import cursor_date, cursor_str
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 
@@ -32,6 +35,71 @@ MarketUser = Depends(require_roles(*MARKET_DATA_ROLES))
 WEEKLY_WINDOW = 5
 MONTHLY_WINDOW = 22
 MA_200_WINDOW = 200
+
+#: One row per ticker upstream, so this comfortably covers the whole exchange.
+SCRAPED_FETCH_LIMIT = 1000
+
+
+@router.get("/source", response_model=MarketDataSourceRead)
+async def read_source(
+    source: MarketDataSourceDep, current_user: CurrentUser = MarketUser
+) -> MarketDataSourceRead:
+    """Where the raw NSE data comes from, and whether it is currently trustworthy.
+
+    The source is the ``~/nse-stock-scraper`` project's daily SQLite output. This
+    endpoint is the answer to "is today's market data actually there and fresh",
+    which matters before anyone builds analysis on top of it.
+    """
+    health = source.health_check()
+    return MarketDataSourceRead(
+        name=health.name,
+        status=health.status,
+        reachable=health.reachable,
+        location=health.location,
+        detail=health.detail,
+        newest_scraped_at=health.newest_scraped_at,
+        age_hours=health.age_hours,
+        is_stale=health.is_stale,
+        quality_ok=health.quality_ok,
+        tables=[
+            SourceTableRead(
+                name=table.name,
+                row_count=table.row_count,
+                newest_scraped_at=table.newest_scraped_at,
+            )
+            for table in health.tables
+        ],
+    )
+
+
+@router.get("/scraped", response_model=CursorPage[ScrapedRow])
+async def read_scraped_rows(
+    source: MarketDataSourceDep,
+    page_size: PageSize = 50,
+    cursor: Cursor = None,
+    current_user: CurrentUser = MarketUser,
+) -> CursorPage[ScrapedRow]:
+    """The latest scraped rows, exactly as the scraper produced them.
+
+    No transformation beyond decoding the JSON columns the scraper stores as
+    text. This is the raw surface future indicators, agents and research will
+    build on.
+    """
+    rows = source.fetch_latest_rows(limit=SCRAPED_FETCH_LIMIT)
+    after_ticker = cursor_str(decode_cursor(cursor), "ticker_symbol") if cursor else None
+
+    # The source returns one row per ticker, so a stable ticker ordering gives a
+    # cursor that cannot skip or repeat rows between pages.
+    ordered = sorted(rows, key=lambda row: str(row.get("ticker_symbol", "")))
+    if after_ticker is not None:
+        ordered = [r for r in ordered if str(r.get("ticker_symbol", "")) > after_ticker]
+
+    items = [ScrapedRow.model_validate(row) for row in ordered[: page_size + 1]]
+    return CursorPage.build(
+        items,
+        page_size=page_size,
+        cursor_for=lambda item: {"ticker_symbol": item.ticker_symbol},
+    )
 
 
 @router.get("/{ticker_symbol}/quote", response_model=QuoteRead)

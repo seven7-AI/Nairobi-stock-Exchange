@@ -119,6 +119,43 @@ class Settings(BaseSettings):
     indicators_file: Path = ROOT_DIR / "indicators.txt"
     research_data_dir: Path = ROOT_DIR / "research" / "data"
 
+    # --- NSE scraper data source ------------------------------------------
+    # Market data comes from the ~/nse-stock-scraper project, which runs a daily
+    # Scrapy job under cron and writes to its own local SQLite database. nse-be
+    # reads that database read-only; it never writes to it and never duplicates
+    # the scraper's logic. Only the root path is configured - the artifact
+    # locations below are derived, so no machine-specific path is written into
+    # application code.
+    nse_scraper_path: Path = Field(
+        default=Path.home() / "nse-stock-scraper",
+        alias="NSE_SCRAPER_PATH",
+        description="Root of the nse-stock-scraper project.",
+    )
+    nse_scraper_db_path: Path | None = Field(
+        default=None,
+        alias="NSE_SCRAPER_DB_PATH",
+        description=(
+            "Override for the scraper's SQLite file. Defaults to "
+            "<nse_scraper_path>/data/nse_scraper.sqlite3."
+        ),
+    )
+    nse_scraper_read_timeout_seconds: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=60.0,
+        alias="NSE_SCRAPER_READ_TIMEOUT_SECONDS",
+        description="SQLite busy timeout, so a concurrent scrape does not fail a read.",
+    )
+    nse_scraper_stale_after_hours: int = Field(
+        default=36,
+        ge=1,
+        alias="NSE_SCRAPER_STALE_AFTER_HOURS",
+        description=(
+            "Age past which the scraped data is reported stale. The scraper runs "
+            "daily at 09:00 Africa/Nairobi, so 36h tolerates one missed run."
+        ),
+    )
+
     # --- analytics --------------------------------------------------------
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     historical_days_back: int = Field(
@@ -139,6 +176,23 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{auth}@"
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def scraper_database_path(self) -> Path:
+        """The scraper's SQLite file. Explicit override wins over the derived path."""
+        if self.nse_scraper_db_path is not None:
+            return self.nse_scraper_db_path
+        return self.nse_scraper_path / "data" / "nse_scraper.sqlite3"
+
+    @property
+    def scraper_stats_dir(self) -> Path:
+        """Where the scraper writes its per-spider quality-gate verdicts."""
+        return self.nse_scraper_path / "reports" / "stats"
+
+    @property
+    def scraper_fallback_dir(self) -> Path:
+        """Where the scraper writes rows whose database write failed."""
+        return self.nse_scraper_path / "reports" / "local_fallback"
 
     @property
     def sync_database_url(self) -> str:
