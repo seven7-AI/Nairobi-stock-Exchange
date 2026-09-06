@@ -1,52 +1,123 @@
 [project]
-name = "nse-analysis"
-version = "0.1.0"
-description = "Daily NSE stock analytics and reporting pipeline"
+name = "nse-be"
+version = "0.2.0"
+description = "NSE Analytics Backend - market data, indicators, analytics and scheduled reporting for the Nairobi Securities Exchange"
 readme = "README.md"
 authors = [
     { name = "Kevin Kipkoech", email = "105924200+Kevin7744@users.noreply.github.com" }
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "matplotlib>=3.10.8",
-    "numpy>=2.4.2",
-    "pandas<3",
-    "pyarrow>=23.0.1",
+    # --- web ---
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "python-multipart>=0.0.20",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    # --- security ---
+    "pyjwt>=2.10.0",
+    "passlib[bcrypt]>=1.7.4",
+    "email-validator>=2.2.0",
+    # --- database ---
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "psycopg2-binary>=2.9.10",
+    "alembic>=1.14.0",
+    "supabase>=2.28.0",
+    # --- background tasks ---
+    "celery[redis]>=5.4.0",
+    "redis>=5.2.0",
+    # --- config ---
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.0",
-    "python-dateutil<2.9",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
-    "requests==2.31.0",
-    "rich>=14.3.2",
+    # --- analytics ---
+    "pandas<3",
+    "numpy>=2.4.2",
     "scipy>=1.17.1",
-    "structlog>=25.5.0",
-    "supabase>=2.28.0",
+    "pyarrow>=23.0.1",
+    "python-dateutil<2.9",
+    "matplotlib>=3.10.8",
+    # --- cli ---
     "typer>=0.24.0",
+    "rich>=14.3.2",
+    "requests==2.31.0",
 ]
 
 [project.scripts]
-nse-analysis = "nse_analysis.cli:app"
+nse-analysis = "app.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
-    "pandas-stubs>=3.0.0.260204",
-    "pytest>=9.0.2",
     "ruff>=0.15.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "pandas-stubs>=3.0.0.260204",
+    "types-passlib>=1.7.7",
+    "types-pyyaml>=6.0.12",
+    "types-requests>=2.31.0",
 ]
 
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["app/alembic/versions", "research", "NSE_DATA"]
 
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "PTH", "RUF"]
+ignore = [
+    "B008",  # FastAPI Depends() in defaults is the documented pattern
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/tests/*" = ["S101"]
+"app/web/db/models/*" = ["RUF012"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.11"
-strict = true
+check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unreachable = true
+plugins = ["pydantic.mypy"]
+exclude = ["app/alembic/versions", "research"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "supabase.*", "passlib.*", "scipy.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --cov=app --cov-report=term-missing"
+markers = [
+    "unit: fast isolated tests with no external dependencies",
+    "integration: tests that touch a database, Redis, or the network",
+    "slow: long-running tests excluded from the default fast loop",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/alembic/*", "app/tests/*"]
