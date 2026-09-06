@@ -41,10 +41,10 @@ in view.
 ## Setup
 
 ```bash
-uv sync --dev            # or: make install
+make install                     # dependencies + git hooks
 cp deployment/env.example .env   # then fill in real values
 uv run alembic upgrade head
-make api                 # http://localhost:8000/docs
+make api                         # http://localhost:8000/docs
 ```
 
 Requires Python 3.11+, and **uv** — not pip, not poetry, not pipenv.
@@ -53,9 +53,26 @@ Requires Python 3.11+, and **uv** — not pip, not poetry, not pipenv.
 
 ## Before you push
 
+**This repository runs its checks locally. There is no hosted CI.** Nothing on the
+server will catch a regression for you.
+
 ```bash
-make check    # codegraph sync + ruff + mypy + pytest
+make install   # installs dependencies AND the git hooks
+make ci        # the full gate — identical to what pre-push runs
 ```
+
+`make install` (or `make hooks`) points `core.hooksPath` at `.githooks/`:
+
+| Hook | Runs |
+|---|---|
+| `pre-commit` | ruff check + format — fast enough to not notice |
+| `pre-push` | secret scan, ruff, format, mypy, the full pytest suite against a disposable PostgreSQL, and the Alembic drift probe |
+
+`git push --no-verify` skips the gate. If you use it, you are the only thing standing
+between a regression and `main`.
+
+The secret scan matters most: a credential-shaped literal that reaches the remote can
+only be removed by rewriting history. Catching it locally costs nothing.
 
 ## Commit messages
 

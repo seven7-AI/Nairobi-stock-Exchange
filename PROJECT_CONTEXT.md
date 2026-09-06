@@ -468,8 +468,14 @@ at `GET /api/v1/indicators/feasibility`.
 | `.github/workflows/daily-report.yml` | 19:00 UTC daily | CLI → `reports/daily/` |
 | `.github/workflows/weekly-report.yml` | Fridays 19:00 UTC | CLI → `reports/weekly/` |
 | `.github/workflows/monthly-report.yml` | last day of month | CLI → `reports/monthly/` |
-| `.github/workflows/test.yml` | PR / push | ruff, format, mypy, pytest, migration drift probe |
-| `.github/workflows/deploy.yml` | push to `main` | SSH → EC2, migrate, rebuild, health poll |
+
+**Quality checks and deployment do not run on GitHub.** The gate lives in
+`.githooks/` (installed by `make install`): pre-commit runs ruff and format,
+pre-push runs a secret scan, ruff, format, mypy, the full pytest suite against a
+disposable PostgreSQL, and the Alembic drift probe. `make ci` runs the same thing
+on demand. Deployment is `docker compose` from a machine. Nothing on the server
+catches a regression, so `--no-verify` is the only thing between a mistake and
+the remote.
 
 Celery beat mirrors the same cron times but **`CELERY_BEAT_ENABLED` defaults to
 `false`**: the report workflows above already generate those reports, and running

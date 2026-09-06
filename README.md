@@ -47,7 +47,7 @@ Requires **Python 3.11+** and **uv** — not pip, poetry or pipenv.
 `requirements.txt`.
 
 ```bash
-uv sync --dev                     # or: make install
+make install                      # dependencies + local git hooks
 cp deployment/env.example .env    # then fill in real values
 uv run alembic upgrade head
 make api                          # http://localhost:8000/docs
@@ -144,16 +144,26 @@ make flower      # task monitor on :5555
 GitHub Actions workflows already generate those reports through the CLI;
 enabling beat without disabling them double-generates every report.
 
-## Quality gates
+## Quality gates — local, not hosted
+
+**There is no CI workflow. The gate runs on your machine**, via git hooks installed
+by `make install`.
 
 ```bash
-make check       # codegraph sync + ruff + mypy + pytest
-./scripts/run_tests.sh   # same, starting a disposable PostgreSQL for integration tests
+make ci                  # the full gate — identical to what pre-push runs
+make check               # codegraph sync + ruff + mypy + pytest
+./scripts/run_tests.sh   # tests only, starting a disposable PostgreSQL
 ```
 
-Ruff (line-length 100, `E/W/F/I/N/UP/B/C4/SIM/PTH/RUF`), mypy
-(`check_untyped_defs`), pytest with `unit`/`integration`/`slow` markers and
-coverage on `app/`.
+| Hook | Runs |
+|---|---|
+| `pre-commit` | ruff check + format |
+| `pre-push` | secret scan, ruff, format, mypy, full pytest against a disposable PostgreSQL, Alembic drift probe |
+
+Ruff (line-length 100, `E/W/F/I/N/UP/B/C4/SIM/PTH/RUF`), mypy (`check_untyped_defs`),
+pytest with `unit`/`integration`/`slow` markers and coverage on `app/`.
+
+`git push --no-verify` bypasses it. Nothing else will catch what you skip.
 
 ## Deployment
 
@@ -163,21 +173,26 @@ docker compose up --build -d            # api, worker, flower, nginx, postgres, 
 docker compose --profile beat up -d     # ... and the scheduler
 ```
 
-`deploy.yml` ships to EC2 over SSH on push to `main`; `test.yml` runs the gates
-on every PR, including a migration drift probe.
+Deployment is run from a machine, not from a workflow:
+
+```bash
+cd deployment
+docker compose run --rm migrate
+docker compose up --build -d
+```
 
 ## Automation
+
+The only GitHub Actions workflows are the three report bots. Quality checks and
+deployment both run locally.
 
 | Workflow | Schedule | Output |
 |---|---|---|
 | `daily-report.yml` | 19:00 UTC daily | `reports/daily/YYYY-MM-DD.md` |
 | `weekly-report.yml` | Fridays 19:00 UTC | `reports/weekly/YYYY-MM-DD.md` |
 | `monthly-report.yml` | last day of month | `reports/monthly/YYYY-MM.md` |
-| `test.yml` | PR / push | quality gates |
-| `deploy.yml` | push to `main` | production |
 
-Repository secrets: `SUPABASE_URL`, `SUPABASE_KEY`, and for deployment
-`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`.
+Repository secrets: `SUPABASE_URL`, `SUPABASE_KEY`.
 
 ## License
 

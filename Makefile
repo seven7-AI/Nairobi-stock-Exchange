@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install graph graph-status explore lint format typecheck test test-unit \
+.PHONY: help install hooks ci graph graph-status explore lint format typecheck test test-unit \
         test-integration check api worker beat flower migrate migration downgrade \
         report-daily report-weekly report-monthly up down logs clean
 
@@ -22,8 +22,10 @@ explore: ## Query CodeGraph: make explore Q="require_roles rbac.py"
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-install: ## Install dependencies from the lockfile
+install: ## Install dependencies from the lockfile and the local git hooks
 	uv sync --dev
+	git config core.hooksPath .githooks
+	@echo "git hooks installed (checks run locally; this repo has no hosted CI)"
 
 # ---------------------------------------------------------------------------
 # Quality gates
@@ -47,6 +49,13 @@ test-integration: ## Integration tests only
 	uv run pytest -m integration
 
 check: graph lint typecheck test ## Sync the graph, then run every quality gate
+
+ci: ## Run the FULL local gate — exactly what pre-push runs. There is no hosted CI.
+	./.githooks/pre-push
+
+hooks: ## Install the git hooks that enforce the gate locally
+	git config core.hooksPath .githooks
+	@echo "core.hooksPath -> .githooks (pre-commit: lint; pre-push: full gate)"
 
 # ---------------------------------------------------------------------------
 # Run

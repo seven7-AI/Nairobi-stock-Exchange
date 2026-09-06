@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# Pre-push gate. This repository runs its checks LOCALLY, not on GitHub —
+# there is no CI workflow to catch anything you skip here.
+#
+# Bypass with --no-verify only when you know why.
+
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+bold() { printf '\033[1m%s\033[0m\n' "$1"; }
+fail() { printf '\033[31m✗ %s\033[0m\n' "$1"; exit 1; }
+ok()   { printf '\033[32m✓ %s\033[0m\n' "$1"; }
+
+bold "pre-push: running the local gate"
+
+# --- 0. secret scan ---------------------------------------------------------
+# Stands in for the removed hosted scanner. Catches credential-shaped literals
+# before they reach a remote, where removing them means rewriting history.
+bold "→ secret scan"
+SECRET_HITS=$(
+  git ls-files -z \
+    | xargs -0 grep -nEI \
+        -e '://[A-Za-z0-9_.-]+:[^/@ $"'"'"']{3,}@' \
+        -e '(SECRET_KEY|_PASSWORD|_TOKEN|API_KEY)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'${}]{8,}' \
+        -e 'sb[a-z]?_[A-Za-z0-9_-]{20,}' \
+        -e 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' \
+        -e 'gh[pousr]_[A-Za-z0-9]{30,}' \
+        -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+      2>/dev/null \
+    | grep -vE '^\.githooks/pre-push:' \
+    | grep -vE 'DEV_JWT_SECRET|placeholder|CHANGE_ME|example\.com' \
+  || true
+)
+if [[ -n "${SECRET_HITS}" ]]; then
+  printf '\033[31m✗ credential-shaped literals found:\033[0m\n%s\n' "${SECRET_HITS}"
+  fail "secret scan failed — remove the literal, do not just move it"
+fi
+ok "secret scan"
+
+# --- 1. lint ----------------------------------------------------------------
+bold "→ ruff check";        uv run ruff check .        || fail "ruff check"
+ok "ruff check"
+bold "→ ruff format";       uv run ruff format --check . || fail "ruff format"
+ok "ruff format"
+
+# --- 2. types ---------------------------------------------------------------
+bold "→ mypy";              uv run mypy app/          || fail "mypy"
+ok "mypy"
+
+# --- 3. tests ---------------------------------------------------------------
+# Integration tests need PostgreSQL; run_tests.sh starts a disposable one.
+# Set SKIP_INTEGRATION=1 to run only the fast unit suite.
+if [[ "${SKIP_INTEGRATION:-0}" == "1" ]]; then
+  bold "→ pytest (unit only)"
+  uv run pytest -m unit --no-cov -q || fail "pytest"
+else
+  bold "→ pytest (full, with a disposable PostgreSQL)"
+  ./scripts/run_tests.sh --no-cov -q || fail "pytest"
+fi
+ok "tests"
+
+# --- 4. migration drift -----------------------------------------------------
+# Replaces the CI drift probe: models and migrations must agree, and
+# autogenerate must never touch the externally-owned stockanalysis_stocks.
+if [[ -n "${TEST_DATABASE_URL:-}" ]]; then
+  bold "→ migration drift probe"
+  PROBE_OUT=$(DATABASE_URL="${TEST_DATABASE_URL}" uv run alembic revision --autogenerate -m drift-probe 2>&1) || true
+  PROBE=$(ls -t app/alembic/versions/*drift_probe*.py 2>/dev/null | head -1 || true)
+  if [[ -n "${PROBE}" ]]; then
+    if grep -q "stockanalysis_stocks" "${PROBE}"; then
+      rm -f "${PROBE}"; fail "autogenerate touched the externally-owned stockanalysis_stocks table"
+    fi
+    if grep -qE 'op\.(create_table|drop_table|add_column|drop_column|alter_column)' "${PROBE}"; then
+      cat "${PROBE}"; rm -f "${PROBE}"; fail "models have drifted from migrations — generate one"
+    fi
+    rm -f "${PROBE}"
+    ok "migration drift probe"
+  fi
+fi
+
+bold "pre-push: all checks passed"

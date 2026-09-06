@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Fast pre-commit gate: lint and format only. The full suite runs on pre-push.
+
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+uv run ruff check . || {
+  printf '\033[31m✗ ruff check failed — `make format` fixes most of it\033[0m\n'; exit 1;
+}
+uv run ruff format --check . || {
+  printf '\033[31m✗ formatting drift — run `make format`\033[0m\n'; exit 1;
+}
+printf '\033[32m✓ pre-commit: lint and format clean\033[0m\n'

@@ -27,10 +27,10 @@ codegraph explore "..."
 
 ## Checklist
 
-- [ ] `make check` passes (codegraph sync + ruff + mypy + pytest)
+- [ ] `make ci` passes locally — **this repo has no hosted CI; nothing else will catch it**
 - [ ] Every new protected route declares `Depends(require_roles(...))`
 - [ ] Every new list endpoint is paginated
 - [ ] New/changed routes have an RBAC matrix test (allowed role 2xx, disallowed role 403)
 - [ ] No credentials, tokens, or password hashes reachable by a log statement
-- [ ] `alembic revision --autogenerate` produces **no** diff against `stockanalysis_stocks`
+- [ ] `alembic revision --autogenerate` produces **no** diff at all, and none against `stockanalysis_stocks`
 - [ ] Commit messages follow `<type>(<scope>): <description>`

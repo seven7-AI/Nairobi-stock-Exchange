@@ -265,7 +265,27 @@ uv run ruff format .
 uv run mypy app/
 uv run pytest
 make check          # codegraph sync + all of the above
+make ci             # the FULL gate, identical to what pre-push runs
 ```
+
+### Checks run locally. There is no hosted CI.
+
+This repository deliberately has **no GitHub Actions quality workflow**. The gate
+lives in `.githooks/`, installed by `make install` or `make hooks`:
+
+- **pre-commit** — ruff check and format (fast)
+- **pre-push** — secret scan, ruff, format, mypy, the full pytest suite against a
+  disposable PostgreSQL, and the Alembic drift probe
+
+Consequences you must internalise:
+
+1. **Nothing on the server will catch a regression.** If you skip the hook with
+   `--no-verify`, broken code reaches the remote and no one is told.
+2. **Run `make ci` before you tell the user work is done.** "It should pass CI" is
+   not a thing here — there is no CI to pass.
+3. **The secret scan is local too.** A credential-shaped literal that reaches the
+   remote can only be removed by rewriting history, so the hook is the last line
+   of defence, not a formality.
 
 ---
 
@@ -308,18 +328,22 @@ nginx          — reverse proxy + SSL
 certbot        — Let's Encrypt auto-renewal
 ```
 
-**GitHub Actions:**
+**GitHub Actions** — report generation only. There is no quality or deploy workflow.
 
 ```
-test.yml            — uv sync + ruff + mypy + pytest on PR/push
-deploy.yml          — SSH -> EC2, git pull, docker compose up --build
 daily-report.yml    — 19:00 UTC, runs the CLI, commits reports/daily/
 weekly-report.yml   — Fridays 19:00 UTC, commits reports/weekly/
 monthly-report.yml  — last day of month, commits reports/monthly/
 ```
 
-The three report workflows drive the **CLI**, not the API. `CELERY_BEAT_ENABLED` defaults
-to `false` so the deployed stack does not double-generate the same reports.
+These drive the **CLI**, not the API. `CELERY_BEAT_ENABLED` defaults to `false` so the
+deployed stack does not double-generate the same reports.
+
+Deployment is run from a machine, not from a workflow:
+
+```bash
+cd deployment && docker compose run --rm migrate && docker compose up --build -d
+```
 
 **Monitoring:** `/health` endpoint (Docker healthcheck), Prometheus via
 `prometheus-fastapi-instrumentator`.
