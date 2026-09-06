@@ -15,7 +15,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=7.0.0",
     # --- security ---
     "pyjwt>=2.10.0",
-    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.2.0",
     "email-validator>=2.2.0",
     # --- database ---
     "sqlalchemy[asyncio]>=2.0.36",
@@ -63,7 +63,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "httpx>=0.28.0",
     "pandas-stubs>=3.0.0.260204",
-    "types-passlib>=1.7.7",
     "types-pyyaml>=6.0.12",
     "types-requests>=2.31.0",
 ]
@@ -102,7 +101,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["app/alembic/versions", "research"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "supabase.*", "passlib.*", "scipy.*"]
+module = ["celery.*", "supabase.*", "scipy.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
