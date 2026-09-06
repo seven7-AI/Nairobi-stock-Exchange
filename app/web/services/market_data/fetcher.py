@@ -73,7 +73,9 @@ class DataFetcher:
         self.logger.info("current_data_merged", merged_rows=len(merged_rows))
         return merged_rows
 
-    def load_historical_from_supabase(self, days_back: int | None = None) -> pd.DataFrame:
+    def load_historical_from_supabase(
+        self, merged_rows: list[dict[str, Any]], days_back: int | None = None
+    ) -> pd.DataFrame:
         """Load historical price data from stockanalysis_stocks table.
 
         First tries to use price_history field from latest rows if available,
@@ -81,10 +83,10 @@ class DataFetcher:
         """
         days: int = days_back or self.settings.historical_days_back
 
-        # Get latest rows per ticker
-        latest_rows = self.fetch_daily_window()
-        merged_rows = self.merge_current_data(latest_rows)
-
+        # `merged_rows` is supplied by the caller, which has already fetched and
+        # deduplicated it. This method used to re-run fetch_daily_window() and
+        # merge_current_data() itself, so every pipeline run hit the upstream
+        # table twice for identical data.
         if not merged_rows:
             self.logger.warning("no_tickers_found_for_historical")
             return pd.DataFrame()

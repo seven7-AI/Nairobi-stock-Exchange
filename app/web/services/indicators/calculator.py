@@ -179,7 +179,7 @@ def _records(frame: pd.DataFrame, columns: Sequence[str]) -> list[dict[str, Any]
     """
     subset = frame.reindex(columns=list(columns))
     return [
-        {key: (None if pd.isna(value) else value) for key, value in record.items()}
+        {str(key): (None if pd.isna(value) else value) for key, value in record.items()}
         for record in subset.to_dict("records")
     ]
 
@@ -200,7 +200,7 @@ def _classify_market(
 
     The count of excluded instruments is returned so a report can disclose it.
     """
-    empty = {
+    empty: dict[str, Any] = {
         "market_trend": "insufficient_data",
         mean_key: None,
         "top_gainers": [],

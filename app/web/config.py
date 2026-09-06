@@ -21,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR / ".env"
 
 DEV_JWT_SECRET = "dev-secret-change-me"
+MIN_PRODUCTION_BCRYPT_ROUNDS = 12
 
 
 class Settings(BaseSettings):
@@ -60,6 +61,17 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default=DEV_JWT_SECRET, alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    bcrypt_rounds: int = Field(
+        default=12,
+        ge=4,
+        le=16,
+        alias="BCRYPT_ROUNDS",
+        description=(
+            "bcrypt cost factor. 12 in production. Test suites lower it to 4 so a "
+            "few hundred hashes do not dominate the run; never lower it in a "
+            "deployed environment."
+        ),
+    )
     refresh_token_expire_days: int = Field(default=7, alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
     # --- redis / celery ---------------------------------------------------
@@ -117,6 +129,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET_KEY is still the development default in a production "
                 "environment. Set a real secret before deploying."
+            )
+        if self.is_production and self.bcrypt_rounds < MIN_PRODUCTION_BCRYPT_ROUNDS:
+            raise ValueError(
+                f"BCRYPT_ROUNDS is {self.bcrypt_rounds}; production requires at "
+                f"least {MIN_PRODUCTION_BCRYPT_ROUNDS}."
             )
         return self
 

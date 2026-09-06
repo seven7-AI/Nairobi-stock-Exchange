@@ -18,11 +18,22 @@ from __future__ import annotations
 
 import bcrypt
 
+from app.web.config import get_settings
+
 #: bcrypt hashes at most 72 bytes and modern versions refuse longer input
 #: rather than truncating silently. Reject at the edge instead.
 MAX_PASSWORD_BYTES = 72
 MIN_PASSWORD_LENGTH = 12
-BCRYPT_ROUNDS = 12
+#: Fallback when settings are unavailable (e.g. a bare unit test).
+DEFAULT_BCRYPT_ROUNDS = 12
+
+
+def _rounds() -> int:
+    """Cost factor from settings, falling back to the production default."""
+    try:
+        return get_settings().bcrypt_rounds
+    except Exception:
+        return DEFAULT_BCRYPT_ROUNDS
 
 
 def hash_password(plain_password: str) -> str:
@@ -30,7 +41,7 @@ def hash_password(plain_password: str) -> str:
     encoded = plain_password.encode("utf-8")
     if len(encoded) > MAX_PASSWORD_BYTES:
         raise ValueError(f"Password exceeds {MAX_PASSWORD_BYTES} bytes.")
-    return bcrypt.hashpw(encoded, bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt(rounds=_rounds())).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -56,7 +67,7 @@ def is_password_acceptable(plain_password: str) -> bool:
 
 
 __all__ = [
-    "BCRYPT_ROUNDS",
+    "DEFAULT_BCRYPT_ROUNDS",
     "MAX_PASSWORD_BYTES",
     "MIN_PASSWORD_LENGTH",
     "hash_password",

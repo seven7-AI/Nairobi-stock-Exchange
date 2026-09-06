@@ -24,8 +24,16 @@ from app.web.db.models.enums import UserRole
 
 
 class TokenType(StrEnum):
+    """The ``token_type`` claim.
+
+    Checked on decode so a token minted for one purpose cannot be replayed for
+    another: a password-reset link is not a bearer credential.
+    """
+
     ACCESS = "access"
     REFRESH = "refresh"
+    EMAIL_VERIFY = "email_verify"
+    PASSWORD_RESET = "password_reset"
 
 
 class TokenPayload(BaseModel):
