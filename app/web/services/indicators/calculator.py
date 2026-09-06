@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 import numpy as np
@@ -166,115 +166,115 @@ def calculate_batch(rows: list[dict[str, Any]], historical: pd.DataFrame) -> lis
     return results
 
 
-def classify_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
-    """Generate simple market-level summary insights."""
+#: Columns every classifier reports alongside the change it ranks on.
+_BASE_COLUMNS = ("ticker_symbol", "company_name", "stock_price")
+
+
+def _records(frame: pd.DataFrame, columns: Sequence[str]) -> list[dict[str, Any]]:
+    """Frame rows as plain dicts with NaN rendered as ``None``, not ``0.0``.
+
+    ``fillna(0.0)`` here is what used to turn "we have no data for this ticker"
+    into "this ticker moved 0.00%". ``None`` flows through ``fmt_percent`` as
+    ``N/A``, which is what the reader needs to see.
+    """
+    subset = frame.reindex(columns=list(columns))
+    return [
+        {key: (None if pd.isna(value) else value) for key, value in record.items()}
+        for record in subset.to_dict("records")
+    ]
+
+
+def _classify_market(
+    indicators: list[dict[str, Any]],
+    *,
+    change_column: str,
+    mean_key: str,
+    top_n: int,
+) -> dict[str, Any]:
+    """Rank gainers and losers on one change column.
+
+    Instruments whose change could not be computed are **excluded from the
+    ranking**, not coerced to zero. Ranking them as 0.00% both invented a
+    number and pushed genuine movers out of the table: the loser list ended up
+    mostly NaN rows sitting at the bottom of a descending sort.
+
+    The count of excluded instruments is returned so a report can disclose it.
+    """
+    empty = {
+        "market_trend": "insufficient_data",
+        mean_key: None,
+        "top_gainers": [],
+        "top_losers": [],
+        "ranked_instruments": 0,
+        "excluded_missing_change": 0,
+    }
     if not indicators:
-        return {"market_trend": "insufficient_data", "top_gainers": [], "top_losers": []}
+        return empty
 
     frame = pd.DataFrame(indicators)
-    if "price_change_1d_pct" not in frame.columns:
-        frame["price_change_1d_pct"] = np.nan
-    if "stock_price" not in frame.columns:
-        frame["stock_price"] = np.nan
-    frame["price_change_1d_pct"] = pd.to_numeric(frame["price_change_1d_pct"], errors="coerce")
+    for column in (*_BASE_COLUMNS, change_column):
+        if column not in frame.columns:
+            frame[column] = np.nan
+    frame[change_column] = pd.to_numeric(frame[change_column], errors="coerce")
     frame["stock_price"] = pd.to_numeric(frame["stock_price"], errors="coerce")
-    mean_change = (
-        float(np.nanmean(frame["price_change_1d_pct"]))
-        if frame["price_change_1d_pct"].notna().any()
-        else 0.0
-    )
+
+    ranked = frame.dropna(subset=[change_column])
+    excluded = len(frame) - len(ranked)
+    if ranked.empty:
+        return {**empty, "excluded_missing_change": excluded}
+
+    mean_change = float(ranked[change_column].mean())
     trend = "bullish" if mean_change > 0 else "bearish" if mean_change < 0 else "flat"
 
-    ordered = frame.sort_values("price_change_1d_pct", ascending=False, na_position="last")
-    top_gainers = (
-        ordered.head(5)[["ticker_symbol", "price_change_1d_pct"]].fillna(0.0).to_dict("records")
-    )
-    top_losers = (
-        ordered.tail(5)[["ticker_symbol", "price_change_1d_pct"]].fillna(0.0).to_dict("records")
-    )
+    columns = (*_BASE_COLUMNS, change_column)
+    ascending = ranked.sort_values(change_column, ascending=True)
+    descending = ranked.sort_values(change_column, ascending=False)
+
+    # With fewer than 2*top_n ranked instruments the two tables would overlap and
+    # the same ticker would be reported as both a top gainer and a top loser.
+    # Split the available universe instead.
+    effective_n = top_n if len(ranked) >= 2 * top_n else max(1, len(ranked) // 2)
 
     return {
         "market_trend": trend,
-        "mean_daily_change_pct": mean_change,
-        "top_gainers": top_gainers,
-        "top_losers": top_losers,
+        mean_key: mean_change,
+        # Best first in gainers, worst first in losers. Previously losers were
+        # `tail(n)` of a descending sort, so the biggest loser came out last.
+        "top_gainers": _records(descending.head(effective_n), columns),
+        "top_losers": _records(ascending.head(effective_n), columns),
+        "ranked_instruments": len(ranked),
+        "excluded_missing_change": excluded,
     }
+
+
+def classify_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
+    """Daily market-level summary insights."""
+    return _classify_market(
+        indicators,
+        change_column="price_change_1d_pct",
+        mean_key="mean_daily_change_pct",
+        top_n=5,
+    )
 
 
 def classify_weekly_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
-    """Generate weekly market-level summary insights."""
-    if not indicators:
-        return {"market_trend": "insufficient_data", "top_gainers": [], "top_losers": []}
-
-    frame = pd.DataFrame(indicators)
-    if "price_change_1w_pct" not in frame.columns:
-        frame["price_change_1w_pct"] = np.nan
-    frame["price_change_1w_pct"] = pd.to_numeric(frame["price_change_1w_pct"], errors="coerce")
-    mean_change = (
-        float(np.nanmean(frame["price_change_1w_pct"]))
-        if frame["price_change_1w_pct"].notna().any()
-        else 0.0
+    """Weekly market-level summary insights."""
+    return _classify_market(
+        indicators,
+        change_column="price_change_1w_pct",
+        mean_key="mean_weekly_change_pct",
+        top_n=10,
     )
-    trend = "bullish" if mean_change > 0 else "bearish" if mean_change < 0 else "flat"
-
-    ordered = frame.sort_values("price_change_1w_pct", ascending=False, na_position="last")
-    top_gainers = (
-        ordered.head(10)[["ticker_symbol", "company_name", "stock_price", "price_change_1w_pct"]]
-        .fillna(0.0)
-        .to_dict("records")
-    )
-    top_losers = (
-        ordered.tail(10)[["ticker_symbol", "company_name", "stock_price", "price_change_1w_pct"]]
-        .fillna(0.0)
-        .to_dict("records")
-    )
-
-    return {
-        "market_trend": trend,
-        "mean_weekly_change_pct": mean_change,
-        "top_gainers": top_gainers,
-        "top_losers": top_losers,
-    }
 
 
 def classify_monthly_market_insights(indicators: list[dict[str, Any]]) -> dict[str, Any]:
-    """Generate monthly market-level summary insights."""
-    if not indicators:
-        return {"market_trend": "insufficient_data", "top_gainers": [], "top_losers": []}
-
-    frame = pd.DataFrame(indicators)
-    if "price_change_1m_pct" not in frame.columns:
-        frame["price_change_1m_pct"] = np.nan
-    frame["price_change_1m_pct"] = pd.to_numeric(frame["price_change_1m_pct"], errors="coerce")
-    mean_change = (
-        float(np.nanmean(frame["price_change_1m_pct"]))
-        if frame["price_change_1m_pct"].notna().any()
-        else 0.0
+    """Monthly market-level summary insights."""
+    return _classify_market(
+        indicators,
+        change_column="price_change_1m_pct",
+        mean_key="mean_monthly_change_pct",
+        top_n=15,
     )
-    trend = "bullish" if mean_change > 0 else "bearish" if mean_change < 0 else "flat"
-
-    ordered = frame.sort_values("price_change_1m_pct", ascending=False, na_position="last")
-    top_gainers = (
-        ordered.head(15)[
-            ["ticker_symbol", "company_name", "stock_price", "market_cap", "price_change_1m_pct"]
-        ]
-        .fillna(0.0)
-        .to_dict("records")
-    )
-    top_losers = (
-        ordered.tail(15)[
-            ["ticker_symbol", "company_name", "stock_price", "market_cap", "price_change_1m_pct"]
-        ]
-        .fillna(0.0)
-        .to_dict("records")
-    )
-
-    return {
-        "market_trend": trend,
-        "mean_monthly_change_pct": mean_change,
-        "top_gainers": top_gainers,
-        "top_losers": top_losers,
-    }
 
 
 def unavailable_requirements(feasibility_records: list[FeasibilityRecord]) -> dict[str, list[str]]:

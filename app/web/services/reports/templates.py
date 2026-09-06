@@ -7,6 +7,26 @@ from typing import Any
 from app.web.services.reports.formatter import fmt_number, fmt_percent
 
 
+def _coverage_lines(market_summary: dict[str, Any]) -> list[str]:
+    """Disclose how many instruments were ranked, and how many were left out.
+
+    Instruments whose change could not be computed are excluded from the
+    gainer/loser tables rather than ranked as 0.00%. Saying so keeps the
+    omission visible instead of silently shrinking the sample.
+    """
+    ranked = market_summary.get("ranked_instruments")
+    excluded = market_summary.get("excluded_missing_change")
+    if ranked is None and excluded is None:
+        return []
+    lines = [f"- Instruments Ranked: **{ranked or 0}**"]
+    if excluded:
+        lines.append(
+            f"- Excluded (no change data): **{excluded}** "
+            "— reported as `N/A`, not ranked as 0.00%"
+        )
+    return lines
+
+
 def render_daily_markdown(
     report_date: str,
     generated_at: str,
@@ -33,6 +53,7 @@ def render_daily_markdown(
     lines.append(
         f"- Data Completeness: **{fmt_percent(data_quality.get('completeness_ratio', 0) * 100)}**"
     )
+    lines.extend(_coverage_lines(market_summary))
     lines.append("")
     lines.append("## Top Gainers")
     lines.append("")
@@ -113,6 +134,7 @@ def render_weekly_markdown(
     lines.append("")
     lines.append(f"- Market Trend: **{trend}**")
     lines.append(f"- Mean Weekly Change: **{mean_change}**")
+    lines.extend(_coverage_lines(market_summary))
     lines.append("")
     lines.append("## Top Weekly Gainers")
     lines.append("")
@@ -198,6 +220,7 @@ def render_monthly_markdown(
     lines.append("")
     lines.append(f"- Market Trend: **{trend}**")
     lines.append(f"- Mean Monthly Change: **{mean_change}**")
+    lines.extend(_coverage_lines(market_summary))
     lines.append("")
     lines.append("## Top Monthly Gainers")
     lines.append("")
