@@ -1,66 +1,81 @@
-# Nairobi Stock Exchange (NSE) Analytics Pipeline - Full Project Context
+# NSE Analytics Backend — Full Project Context
 
 ## Overview
 
-This is a **production-grade Python analytics pipeline** that automatically fetches live Nairobi Securities Exchange (NSE) stock data from a Supabase database, calculates financial indicators, and generates structured Markdown market reports on daily, weekly, and monthly schedules. The pipeline runs via GitHub Actions bots and/or local Windows Task Scheduler / Linux cron jobs, committing reports to the repository automatically.
+**`nse-be`** is a layered FastAPI service for Nairobi Securities Exchange market
+analytics: it ingests NSE market data, computes financial indicators, serves them
+over an authenticated REST API, and generates daily, weekly and monthly Markdown
+market reports on a schedule.
 
-The project also contains a **historical dataset archive** (`NSE_DATA/`) with CSV files covering every traded NSE stock from **2007 through 2024** (18 years of data), plus sector classification mappings.
+The same business services are reachable three ways — the HTTP API, Celery
+background tasks, and the `nse-analysis` CLI — so no entry path holds its own copy
+of the logic.
 
-**Author:** Kevin Kipkoech
-**License:** Apache 2.0
-**Python:** 3.12 (minimum 3.11)
-**Package Manager:** uv (with hatch build backend)
+**Service:** `nse-be` on port **8000**
+**Author:** Kevin Kipkoech · **License:** Apache 2.0
+**Python:** 3.11+ · **Package manager:** uv · **Build backend:** Hatchling
+**Database:** PostgreSQL via asyncpg, SQLAlchemy 2.0 async, Alembic migrations
+**Background tasks:** Celery + Redis
+**Agent rules:** `CLAUDE.md` (root) plus layer-specific rules in five packages
+
+> **Navigate with CodeGraph first.** This repo is indexed (`.codegraph/`).
+> `codegraph explore "<symbols or question>"` returns verbatim source plus the
+> callers and blast radius — which matters here because routers, Celery tasks and
+> the CLI all reach the same services through edges grep cannot follow.
 
 ---
 
-## Architecture Diagram
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      AUTOMATION LAYER                       │
-│                                                             │
-│  GitHub Actions          Windows Task Scheduler     Cron    │
-│  ┌──────────────┐       ┌────────────────────┐   ┌──────┐  │
-│  │ daily  7PM   │       │ run_daily_task.ps1  │   │ bash │  │
-│  │ weekly Fri   │       │ run_weekly_task.ps1 │   │ jobs │  │
-│  │ monthly last │       │ run_monthly_task.ps1│   │      │  │
-│  └──────┬───────┘       └────────┬───────────┘   └──┬───┘  │
-│         │                        │                   │      │
-│         └────────────────────────┼───────────────────┘      │
-│                                  ▼                          │
-│                        CLI (Typer): nse-analysis             │
-│                        ┌────────────────────┐               │
-│                        │ run-daily          │               │
-│                        │ generate-weekly    │               │
-│                        │ generate-monthly   │               │
-│                        │ pull-data          │               │
-│                        │ calculate-indicators│               │
-│                        │ check-feasibility  │               │
-│                        │ inspect-metadata   │               │
-│                        │ inspect-price-hist.│               │
-│                        │ generate-report    │               │
-│                        └────────┬───────────┘               │
-└─────────────────────────────────┼───────────────────────────┘
-                                  │
-                    ┌─────────────┼─────────────┐
-                    ▼             ▼              ▼
-            ┌──────────┐  ┌────────────┐  ┌──────────────┐
-            │ Supabase │  │ Indicator  │  │ Report       │
-            │ Data     │  │ Calculator │  │ Generator    │
-            │ Fetcher  │  │            │  │              │
-            └─────┬────┘  └─────┬──────┘  └──────┬───────┘
-                  │             │                 │
-                  ▼             ▼                 ▼
-         ┌──────────────┐  Computes:     ┌────────────────┐
-         │ Supabase DB  │  - 1D/1W/1M    │ reports/       │
-         │ (cloud)      │    price Δ%    │  ├── daily/    │
-         │              │  - MAs (20,50, │  ├── weekly/   │
-         │ Table:       │    200 day)    │  └── monthly/  │
-         │ stockanalysis│  - RSI         │                │
-         │ _stocks      │  - CAGR        │ Markdown files │
-         └──────────────┘  - ATH/ATL     │ auto-committed │
-                           - Volatility   └────────────────┘
+                    ┌───────────────── ENTRY PATHS ─────────────────┐
+                    │                                               │
+   HTTP :8000            Celery worker              nse-analysis CLI
+   (FastAPI)             (Redis broker)             (Typer)
+        │                      │                          │
+        └──────────────────────┼──────────────────────────┘
+                               ▼
+              ┌────────── BUSINESS SERVICES ──────────┐
+              │  market_data · indicators · reports   │
+              │  redis · email · storage              │
+              └───────────────┬───────────────────────┘
+                              ▼
+                     ┌── DB SERVICE LAYER ──┐
+                     │  queries only        │
+                     └──────────┬───────────┘
+                                ▼
+        ┌───────────────── ORM MODELS ─────────────────┐
+        │  organizations · users · onboarding_state     │
+        │  instruments · watchlists · watchlist_items   │
+        │  price_bars · indicator_snapshots             │
+        │  report_runs · connectors                     │
+        │  ─────────────────────────────────────────    │
+        │  stockanalysis_stocks  (READ-ONLY, external)  │
+        └───────────────────┬───────────────────────────┘
+                            ▼
+                 PostgreSQL (Supabase) · Redis
 ```
+
+**Layering rule:** Routers → Business Services → DB Services → ORM Models, one
+direction only. A router never imports an ORM model; a service never raises
+`HTTPException`; a DB service never holds a business rule.
+
+### RBAC — 7 roles
+
+`platform_admin`, `org_admin`, `analyst`, `portfolio_manager`, `trader`,
+`research_viewer`, `client`.
+
+Enforced by `require_roles(*roles)` **at the router**, never inside business
+logic. Every protected endpoint declares the roles it admits.
+
+### Onboarding — a 7-step state machine
+
+1. Organization profile → 2. Team invitations → 3. Market coverage →
+4. Watchlist setup → 5. **Data connectors (optional, skippable)** →
+6. Report preferences → 7. Review & activate
+
+Steps are strictly ordered; ordering is enforced in `onboarding_service` so the
+rule holds for every caller. Completing step 7 activates the organization.
 
 ---
 
@@ -258,48 +273,28 @@ The pipeline currently tracks **59 stocks** across these NSE sectors:
 
 ## How the Pipeline Works
 
-### Daily Pipeline (`run-daily`)
+All three report pipelines share one implementation:
+`app/web/services/reports/pipeline.py`. The Celery task and the CLI both call it.
 
-This is the core operation, run at **7 PM UTC daily** via GitHub Actions or Task Scheduler:
+1. **Fetch** — `DataFetcher.fetch_daily_window()` pulls the latest rows from the
+   upstream `stockanalysis_stocks` table.
+2. **Merge** — the newest row per `ticker_symbol` is kept (~59 instruments).
+3. **Validate** — `validate_merged_rows()` produces a completeness summary.
+4. **Load history** — `load_historical_from_supabase(merged_rows)`. The merged
+   rows are *passed in*; this method used to re-fetch them itself, doubling every
+   run's upstream reads.
+5. **Calculate** — 1D/1W/1M change, 20/50/200-day moving averages, RSI(14), CAGR,
+   all-time high/low, distance from ATH.
+6. **Classify** — `_classify_market()` ranks gainers and losers. Instruments whose
+   change could not be computed are **excluded from the ranking**, not coerced to
+   0.00%, and the exclusion count is reported.
+7. **Render** — Markdown to `reports/{daily,weekly,monthly}/`.
+8. **Record** — a `report_runs` row captures status, output path, instrument count
+   and the headline summary.
 
-1. **Pull Data** - `DataFetcher` connects to Supabase and fetches the latest 1000 rows from `stockanalysis_stocks`, ordered by `scraped_at` descending
-2. **Merge & Deduplicate** - Keeps only the most recent row per `ticker_symbol`, producing ~59 unique stock records
-3. **Validate** - `validate_merged_rows()` checks for missing tickers, missing prices, and calculates data completeness ratio
-4. **Load Historical** - Extracts price history from the `price_history` JSON field in each row (or falls back to fetching older rows by date range)
-5. **Calculate Indicators** - For each stock, computes:
-   - 1-day price change % (from `stock_change` field)
-   - 1-week price change % (from 5-day historical lookback)
-   - 1-month price change % (from 22-day historical lookback)
-   - Moving averages (20-day, 50-day, 200-day)
-   - RSI (14-day relative strength index)
-   - CAGR (compound annual growth rate)
-   - All-time high/low from available history
-   - Annualized volatility
-6. **Classify Market** - Determines overall market trend (bullish/bearish/flat) based on mean daily change
-7. **Generate Report** - Renders a Markdown file with: executive summary, top 5 gainers, top 5 losers, valuation snapshot (top 20 by market cap), feasibility summary, data quality metrics
-8. **Auto-Commit** - Runner scripts (or GitHub Actions) commit the report file and push to the repository as "NSE-Report-Bot" / "github-actions[bot]"
-
-### Weekly Pipeline (`generate-weekly-report`)
-
-Run on **Fridays at 7 PM UTC**:
-
-- Same data fetch and calculation as daily
-- Uses `classify_weekly_market_insights()` for weekly trend classification
-- Report includes: top 10 weekly gainers/losers, performance overview for top 30 stocks by market cap
-- Saved to `reports/weekly/YYYY-MM-DD.md` (using the week-ending date)
-
-### Monthly Pipeline (`generate-monthly-report`)
-
-Run on the **last day of each month at 7 PM UTC**:
-
-- Same data fetch and calculation as daily
-- Uses `classify_monthly_market_insights()` for monthly trend classification
-- Report includes: top 15 monthly gainers/losers, full performance overview for top 50 stocks (with PE ratio column)
-- Saved to `reports/monthly/YYYY-MM.md`
-
-### Yearly Pipeline
-
-**Not yet implemented.** The project structure anticipates it (no `reports/yearly/` directory exists yet), but no yearly report generation or template has been built. The historical CSV archive (2007-2024) provides the raw data that could power yearly analysis.
+Weekly uses a 7-day window and top-10 tables; monthly uses the calendar month and
+top-15 tables. Both need enough history per ticker (≥5 and ≥22 observations),
+which is what the `price_bars` backfill provides.
 
 ---
 
@@ -409,15 +404,15 @@ The pipeline defines **280+ financial indicators** across 21 categories in `indi
 | Price Change 1D (%) | Calculated from `stock_change` / previous price |
 | Price Change 1W (%) | From 5-day historical lookback |
 | Price Change 1M (%) | From 22-day historical lookback |
-| Market Cap | Direct from `market_cap` field |
-| Revenue | Direct from `revenue` field |
-| PE Ratio | Direct from `pe_ratio` field |
-| PS Ratio | Direct from `ps_ratio` field |
-| PB Ratio | Direct from `pb_ratio` field |
-| Dividend Yield | Direct from `dividend_yield` field |
-| 52-Week High | Direct from `week_52_high` field |
-| 52-Week Low | Direct from `week_52_low` field |
-| Volume | Direct from `volume` field |
+| Market Cap | From the `overview_metrics` JSONB blob |
+| Revenue | From the `overview_metrics` JSONB blob |
+| PE Ratio | From the `overview_metrics` JSONB blob |
+| PS Ratio | From the `overview_metrics` JSONB blob |
+| PB Ratio | From the `overview_metrics` JSONB blob |
+| Dividend Yield | From the `dividends_metrics` JSONB blob |
+| 52-Week High | From the `price_metrics` JSONB blob |
+| 52-Week Low | From the `price_metrics` JSONB blob |
+| Distance from ATH (%) | Latest price against the all-time high |
 | 20-Day Moving Average | Calculated from 20 data points of history |
 | 50-Day Moving Average | Calculated from 50 data points of history |
 | 200-Day Moving Average | Calculated from 200 data points of history |
@@ -425,12 +420,20 @@ The pipeline defines **280+ financial indicators** across 21 categories in `indi
 | CAGR | Calculated from historical start/end prices + time span |
 | All-Time High | Max of all historical prices |
 | All-Time Low | Min of all historical prices |
-| Annualized Volatility | Standard deviation of daily returns, annualized |
+| Total Return 1M / 1Y | Direct from `performance_metrics` |
 | Company Name | Direct from `company_name` field |
+
+> Two entries previously listed here - **Volume** and **Annualized Volatility** -
+> were never produced by `calculate_for_row()`. They have been replaced above with
+> metrics the calculator does emit. Query the live figure rather than trusting this
+> table: `GET /api/v1/indicators/feasibility`, or `uv run nse-analysis check-feasibility`.
 
 ### Not Yet Calculable (216)
 
-These require additional data sources or field mappings not yet available: EPS, EBITDA, Free Cash Flow, Debt ratios, Beta, Forward PE, Balance Sheet items, Cash Flow items, etc. The full list is documented in each daily report under "Indicators Not Calculable."
+These require data sources or field mappings not currently available: EPS, EBITDA,
+Free Cash Flow, debt ratios, Beta, Forward PE, balance sheet and cash flow items.
+The full list appears in every daily report under "Indicators Not Calculable", and
+at `GET /api/v1/indicators/feasibility`.
 
 ### Indicator Categories (from `indicators.txt`)
 
@@ -460,30 +463,21 @@ These require additional data sources or field mappings not yet available: EPS, 
 
 ## Automation & Scheduling
 
-### GitHub Actions (3 workflows in `.github/workflows/`)
-
-| Workflow | Schedule | What it does |
+| Workflow | Schedule | Purpose |
 |---|---|---|
-| `daily-report.yml` | `0 19 * * *` (7 PM UTC daily) | Runs `uv run nse-analysis run-daily`, commits to `reports/daily/` |
-| `weekly-report.yml` | `0 19 * * 5` (7 PM UTC Fridays) | Runs `uv run nse-analysis generate-weekly-report`, commits to `reports/weekly/` |
-| `monthly-report.yml` | `0 19 28-31 * *` (7 PM UTC, last days of month) | Runs `uv run nse-analysis generate-monthly-report`, commits to `reports/monthly/` |
+| `.github/workflows/daily-report.yml` | 19:00 UTC daily | CLI → `reports/daily/` |
+| `.github/workflows/weekly-report.yml` | Fridays 19:00 UTC | CLI → `reports/weekly/` |
+| `.github/workflows/monthly-report.yml` | last day of month | CLI → `reports/monthly/` |
+| `.github/workflows/test.yml` | PR / push | ruff, format, mypy, pytest, migration drift probe |
+| `.github/workflows/deploy.yml` | push to `main` | SSH → EC2, migrate, rebuild, health poll |
 
-All workflows: checkout repo, install uv, install Python, sync dependencies, run CLI command, then `git add/commit/push` as `github-actions[bot]`.
+Celery beat mirrors the same cron times but **`CELERY_BEAT_ENABLED` defaults to
+`false`**: the report workflows above already generate those reports, and running
+both would double-generate every one. `start_celery.py beat` refuses to launch
+while the flag is false.
 
-### Local Runner Scripts (`scripts/`)
-
-Each report type has PowerShell (.ps1), CMD (.cmd), and bash (.sh) variants:
-
-- **Daily:** `run_daily_task.ps1` / `.cmd` - runs `uv run nse-analysis run-daily`, logs to `logs/task_scheduler.log`, auto-commits as "NSE-Report-Bot"
-- **Weekly:** `run_weekly_task.ps1` / `.cmd` / `.sh` - runs `uv run nse-analysis generate-weekly-report`
-- **Monthly:** `run_monthly_task.ps1` / `.cmd` / `.sh` - runs `uv run nse-analysis generate-monthly-report` (bash version includes last-day-of-month guard)
-
-### Scheduler Setup Scripts
-
-- `setup_windows_task.ps1` - Creates Windows Task Scheduler task "NSE-Daily-Report" via `schtasks.exe`
-- `setup_weekly_task.ps1` - Creates "NSE-Weekly-Report" task for Fridays
-- `setup_monthly_task.ps1` - Creates "NSE-Monthly-Report" task for the 28th of each month
-- `setup_cron.sh` - Installs crontab entry for daily Linux/macOS runs
+Local schedulers (`scripts/run_*_task.{sh,ps1,cmd}`, `scripts/setup_*.{sh,ps1}`)
+are retained and still drive the same CLI commands.
 
 ---
 
@@ -491,126 +485,104 @@ Each report type has PowerShell (.ps1), CMD (.cmd), and bash (.sh) variants:
 
 ```
 Nairobi-stock-Exchange/
-├── .github/workflows/
-│   ├── daily-report.yml
-│   ├── weekly-report.yml
-│   └── monthly-report.yml
-│
-├── NSE_DATA/                              # Historical CSV archive (LEGACY/REFERENCE)
-│   ├── NSE_data_all_stocks_2007.csv       # ~10,600 rows
-│   ├── NSE_data_all_stocks_2008.csv
-│   ├── ...
-│   ├── NSE_data_all_stocks_2024.csv       # ~18,100 rows
-│   ├── NSE_data_stock_market_sectors_2013.csv
-│   ├── NSE_data_stock_market_sectors_2020.csv
-│   ├── NSE_data_stock_market_sectors_2021.csv
-│   ├── NSE_data_stock_market_sectors_2022.csv
-│   └── NSE_data_stock_market_sectors_2023_2024.csv
-│
-├── reports/                               # Auto-generated market reports
-│   ├── daily/
-│   │   ├── 2026-02-18.md
-│   │   └── 2026-02-19.md
-│   ├── weekly/
-│   │   └── 2026-02-19.md
-│   └── monthly/
-│       └── 2026-02.md
-│
-├── scripts/                               # Automation runner + scheduler scripts
-│   ├── run_daily_task.ps1 / .cmd
-│   ├── run_weekly_task.ps1 / .cmd / .sh
-│   ├── run_monthly_task.ps1 / .cmd / .sh
-│   ├── setup_windows_task.ps1
-│   ├── setup_weekly_task.ps1
-│   ├── setup_monthly_task.ps1
-│   └── setup_cron.sh
-│
-├── src/nse_analysis/                      # Main Python package
-│   ├── __init__.py
-│   ├── cli.py                             # Typer CLI with 9 commands
-│   ├── config.py                          # Pydantic settings from .env
-│   ├── data/
-│   │   ├── fetcher.py                     # DataFetcher: Supabase data ingestion
-│   │   └── validator.py                   # Row validation and completeness check
-│   ├── database/
-│   │   ├── connection.py                  # Supabase client with retry logic
-│   │   ├── metadata.py                    # Table structure inspection
-│   │   └── queries.py                     # Reusable query utilities
-│   ├── indicators/
-│   │   ├── calculator.py                  # Financial indicator computation
-│   │   ├── feasibility.py                 # Indicator feasibility analysis
-│   │   └── registry.py                    # Parses indicators.txt definitions
-│   ├── reports/
-│   │   ├── formatter.py                   # Number/percent formatting helpers
-│   │   ├── generator.py                   # Report writing orchestrator
-│   │   └── templates.py                   # Markdown templates (daily/weekly/monthly)
-│   └── utils/
-│       ├── exceptions.py                  # Custom exception hierarchy
-│       └── logger.py                      # Structured JSON event logging
-│
-├── tests/
-│   ├── test_calculator.py
-│   ├── test_validator.py
-│   └── test_registry_and_feasibility.py
-│
-├── .env                                   # (gitignored) SUPABASE_URL + SUPABASE_KEY
-├── .python-version                        # 3.12
-├── indicators.txt                         # 280+ indicator definitions (21 categories)
-├── pyproject.toml                         # Project config, dependencies, CLI entry
-├── uv.lock                                # Dependency lock file
-├── README.md
-├── REPORT_COMMANDS.md                     # Command reference documentation
-└── LICENSE                                # Apache 2.0
+├── CLAUDE.md                 agent rules — CodeGraph first
+├── CONTRIBUTING.md
+├── pyproject.toml            single source of truth for dependencies
+├── uv.lock  alembic.ini  Makefile  start_celery.py
+├── indicators.txt            280+ indicator catalogue
+├── .claude/                  settings.json + /new-router /new-model /new-task /migrate
+├── deployment/               Dockerfile, docker-compose.yml, nginx.conf, env.example
+├── scripts/                  start_api.sh, start_worker.sh, run_tests.sh, schedulers
+├── NSE_DATA/                 2007-2024 CSV archive (source for research/)
+├── research/                 notebook + canonical parquet artifacts
+├── reports/{daily,weekly,monthly}/
+└── app/
+    ├── cli/main.py           nse-analysis — a thin wrapper over the services
+    ├── web/
+    │   ├── main.py           app factory + lifespan (never @app.on_event)
+    │   ├── config.py         Pydantic Settings
+    │   ├── api/
+    │   │   ├── routers/      10 domains, each views.py + schema.py
+    │   │   ├── middleware/   request id, access logging
+    │   │   ├── deps.py  pagination.py  error_handlers.py
+    │   ├── core/
+    │   │   ├── dependencies.py   AppState
+    │   │   ├── exceptions.py
+    │   │   └── security/         tokens.py, rbac.py, password.py
+    │   ├── db/
+    │   │   ├── base.py           async engine + sync engine (Alembic/Celery only)
+    │   │   ├── models/           one file per table; external/ is read-only
+    │   │   └── services/         queries only
+    │   ├── services/         market_data, indicators, reports, redis, email, storage
+    │   └── utils/            logger with credential redaction
+    ├── celery_app/           celeryconfig.py + tasks/{report,ingest,email}_tasks.py
+    ├── alembic/              env.py (include_object hook), versions/
+    └── tests/                unit/, integration/, conftest.py
 ```
+
+Each of `app/web/api/routers/`, `app/web/db/`, `app/web/services/`,
+`app/celery_app/` and `app/tests/` carries its own `CLAUDE.md` opening with the
+CodeGraph query to run before working there.
 
 ---
 
 ## Key Dependencies
 
-| Package | Purpose |
-|---|---|
-| `supabase` | Supabase Python client for database access |
-| `pandas` | Data manipulation and historical analysis |
-| `numpy` | Numerical computations (RSI, volatility, etc.) |
-| `pydantic` / `pydantic-settings` | Configuration validation and typed settings |
-| `typer` | CLI framework (9 commands) |
-| `rich` | Terminal output formatting (tables, colors) |
-| `structlog` | Structured JSON logging |
-| `python-dotenv` | Environment variable loading |
-| `requests` | HTTP requests |
-| `pyyaml` | YAML parsing |
+**Web:** fastapi, uvicorn[standard], prometheus-fastapi-instrumentator
+**Security:** pyjwt, bcrypt (not passlib — see below), email-validator
+**Database:** sqlalchemy[asyncio], asyncpg, psycopg2-binary, alembic, supabase
+**Tasks:** celery[redis], redis
+**Config:** pydantic, pydantic-settings, python-dotenv
+**Analytics:** pandas, numpy, scipy, pyarrow, matplotlib
+**CLI:** typer, rich
+**Dev:** ruff, mypy, pytest, pytest-asyncio, pytest-cov, httpx
 
-Dev tools: `ruff` (linting/formatting), `mypy` (strict type checking), `pytest` (testing)
+> passlib 1.7.4 (its final release, 2020) probes its backend with a secret longer
+> than 72 bytes, which bcrypt ≥ 4.1 refuses outright, so `CryptContext.hash()`
+> raises before hashing anything. The `bcrypt` library is used directly instead.
 
 ---
 
 ## Configuration
 
-The pipeline requires a `.env` file (gitignored) with:
+All settings are typed in `app/web/config.py` and loaded from `.env`. Nothing
+reads `os.environ` directly. See `deployment/env.example` for the full list.
 
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key-here
-STOCKANALYSIS_TABLE=stockanalysis_stocks   # optional, this is the default
-```
+Two production guards refuse to boot a misconfigured deployment:
 
-For GitHub Actions, these are stored as repository secrets: `SUPABASE_URL` and `SUPABASE_KEY`.
+- `JWT_SECRET_KEY` still at the development default in `ENVIRONMENT=production`;
+- `BCRYPT_ROUNDS` below 12 in production (tests lower it to 4 for speed).
 
 ---
 
 ## Current State & Known Limitations
 
-1. **Weekly/Monthly reports show 0.00% changes** - The `price_history` field in Supabase needs enough accumulated data points (5+ days for weekly, 22+ for monthly) before these calculations produce meaningful results.
+1. **`stockanalysis_stocks` is not ours.** An external scraper outside this repo
+   creates and writes it. It is mapped read-only, excluded from Alembic
+   autogenerate by the `include_object` hook, and CI fails the build if a
+   migration ever touches it.
 
-2. **Only 22 of 280+ indicators are calculable** - Most advanced financial indicators (EPS, EBITDA, debt ratios, cash flow metrics, etc.) require financial statement data not currently available in the Supabase table. The missing field mappings are documented in every daily report.
+2. **Historical depth drives which indicators are computable.** Weekly and monthly
+   changes need ≥5 and ≥22 observations per ticker. The upstream `price_history`
+   field does not yet carry that depth, which is why
+   `nse-analysis backfill-prices` loads the 18-year canonical archive into
+   `price_bars`.
 
-3. **No yearly report** - The infrastructure for daily/weekly/monthly is complete, but yearly reports have not been implemented yet.
+3. **~22 of 280+ catalogued indicators are computable.** The rest need financial
+   statement data (EPS, EBITDA, free cash flow, debt ratios, beta) that no current
+   source provides. `GET /api/v1/indicators/feasibility` reports the live count.
 
-4. **Historical CSVs are deprecated** - The `NSE_DATA/` folder CSVs are no longer used by the pipeline (data now comes from Supabase), but they contain 18 years of valuable historical data that could be leveraged for deeper analysis.
+4. **1D change has no unit-drift guard.** `price_change_1d_pct` derives the
+   previous close as `price - stock_change`, assuming `stock_change` is an
+   absolute delta. Implausible daily moves in historical reports (e.g. SLAM
+   +219.05% on 2026-02-19) suggest the upstream field is sometimes a percentage.
+   Deliberately not "fixed" — it needs a decision on what counts as a plausible
+   daily move, not a guess.
 
-5. **Date format inconsistencies** - The historical CSV files use different date formats across years (`1/2/2007` vs `2-Jan-24`), which would need normalization if used for analysis.
+5. **No yearly report.** Daily, weekly and monthly exist; yearly does not.
 
-6. **Scraper is external** - The component that populates the Supabase `stockanalysis_stocks` table is not part of this repository.
+6. **The scraper is external.** The component populating `stockanalysis_stocks`
+   is not part of this repository.
 
 ---
 
@@ -640,6 +612,12 @@ uv run nse-analysis check-feasibility
 
 # Inspect Supabase table structure
 uv run nse-analysis inspect-metadata
+
+# Seed the instrument master from research/data/ticker_master.parquet
+uv run nse-analysis seed-instruments
+
+# Backfill price_bars from the 18-year canonical archive
+uv run nse-analysis backfill-prices
 
 # Inspect price_history field structure
 uv run nse-analysis inspect-price-history --limit 5
