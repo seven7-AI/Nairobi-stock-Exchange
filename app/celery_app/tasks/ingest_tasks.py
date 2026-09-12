@@ -110,7 +110,17 @@ def seed_instruments() -> dict[str, Any]:
 
 @celery_app.task(name="app.celery_app.tasks.ingest_tasks.backfill_price_bars_from_parquet")
 def backfill_price_bars_from_parquet(start_year: int | None = None) -> dict[str, Any]:
-    """Backfill ``price_bars`` from the cleaned canonical archive."""
+    """DEPRECATED: backfill ``price_bars`` from the research parquet.
+
+    The parquet is sign-corrupted - the notebook that built it stripped every ``-``
+    character, flipping 91,276 negative changes positive. The correct 2007-today
+    timeline is the scraper database's ``stock_observations`` table; read it through
+    ``NseScraperSource.fetch_observations``. Kept only so existing callers fail
+    loudly here rather than silently importing bad data.
+    """
+    logger.warning(
+        "backfill_price_bars_from_parquet_is_deprecated", reason="parquet is sign-corrupted"
+    )
     import pandas as pd
 
     settings = get_settings()

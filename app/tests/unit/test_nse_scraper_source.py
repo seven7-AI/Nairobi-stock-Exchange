@@ -362,3 +362,106 @@ def test_missing_fallback_directory_is_not_an_error(scraper_root: Path, scraper_
     source = NseScraperSource(_settings(scraper_root))
     assert source.read_fallback_records() == []
     assert source.list_fallback_dates() == []
+
+
+# --- canonical timeline (stock_observations, maintained by the scraper project) ---------
+OBSERVATIONS_SCHEMA = """
+CREATE TABLE instruments (
+    ticker_symbol TEXT PRIMARY KEY, company_name TEXT NOT NULL, instrument_type TEXT NOT NULL,
+    parent_ticker TEXT, sector TEXT, sector_source TEXT, first_seen_date TEXT, last_seen_date TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE stock_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ticker_symbol TEXT NOT NULL, trade_date TEXT NOT NULL,
+    source_ticker TEXT NOT NULL, company_name TEXT, close_price REAL NOT NULL, previous_close REAL,
+    day_low REAL, day_high REAL, year_low REAL, year_high REAL, change_abs REAL, change_pct REAL,
+    volume INTEGER, adjusted_price REAL, data_source TEXT NOT NULL, source_file TEXT,
+    source_row INTEGER,
+    source_date_raw TEXT, quality_flags TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL, UNIQUE (ticker_symbol, trade_date)
+);
+"""
+
+
+@pytest.fixture
+def timeline_db(scraper_root: Path, scraper_db: Path) -> Path:
+    connection = sqlite3.connect(scraper_db)
+    connection.executescript(OBSERVATIONS_SCHEMA)
+    now = datetime.now(tz=UTC).isoformat()
+    connection.execute(
+        "INSERT INTO instruments VALUES ('ABSA','Absa Bank Kenya Plc','ordinary',NULL,"
+        "'Banking','f',"
+        "'2007-01-02','2026-09-12',1,?,?)",
+        (now, now),
+    )
+    connection.execute(
+        "INSERT INTO instruments VALUES ('KCB','KCB Group Plc','ordinary',NULL,'Banking','f',"
+        "'2007-01-02','2026-09-12',1,?,?)",
+        (now, now),
+    )
+    rows = [
+        ("ABSA", "2012-12-31", "BBK", 15.75, "nse_archive:2012", '["date_repaired"]'),
+        ("ABSA", "2013-01-02", "ABSA", 15.7, "nse_archive:2013", "[]"),
+        ("ABSA", "2026-09-12", "ABSA", 34.95, "nse_scraper", '["scrape_date_is_observation_date"]'),
+        ("KCB", "2007-01-02", "KCB", 243.0, "nse_archive:2007", "[]"),
+    ]
+    for ticker, day, src, close, source, flags in rows:
+        connection.execute(
+            "INSERT INTO stock_observations (ticker_symbol, trade_date, source_ticker, "
+            "close_price, "
+            "data_source, quality_flags, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (ticker, day, src, close, source, flags, now, now),
+        )
+    connection.commit()
+    connection.close()
+    return scraper_db
+
+
+def test_observations_come_back_oldest_first_with_lineage_preserved(
+    scraper_root: Path, timeline_db: Path
+) -> None:
+    source = NseScraperSource(_settings(scraper_root))
+    rows = source.fetch_observations("absa")  # case-insensitive
+    assert [r["trade_date"] for r in rows] == ["2012-12-31", "2013-01-02", "2026-09-12"]
+    assert rows[0]["source_ticker"] == "BBK"  # the archive's old code survives
+    assert rows[0]["quality_flags"] == ["date_repaired"]  # decoded, not TEXT
+    assert {r["data_source"] for r in rows} == {
+        "nse_archive:2012",
+        "nse_archive:2013",
+        "nse_scraper",
+    }
+
+
+def test_observations_honour_the_date_window(scraper_root: Path, timeline_db: Path) -> None:
+    from datetime import date as date_type
+
+    source = NseScraperSource(_settings(scraper_root))
+    rows = source.fetch_observations("ABSA", start=date_type(2013, 1, 1), end=date_type(2020, 1, 1))
+    assert [r["trade_date"] for r in rows] == ["2013-01-02"]
+
+
+def test_instruments_filter_by_sector(scraper_root: Path, timeline_db: Path) -> None:
+    source = NseScraperSource(_settings(scraper_root))
+    assert {r["ticker_symbol"] for r in source.fetch_instruments(sector="Banking")} == {
+        "ABSA",
+        "KCB",
+    }
+    assert source.fetch_instruments(sector="Agricultural") == []
+
+
+def test_timeline_absent_is_empty_not_an_error(source: NseScraperSource) -> None:
+    """A scraper database that predates the canonical tables still serves its old shape."""
+    assert source.has_observations() is False
+    assert source.fetch_observations("KCB") == []
+    assert source.fetch_instruments() == []
+    assert source.health_check().reachable is True
+
+
+def test_health_reports_the_timeline_span(scraper_root: Path, timeline_db: Path) -> None:
+    health = NseScraperSource(_settings(scraper_root)).health_check()
+    stat = next(t for t in health.tables if t.name == "stock_observations")
+    assert stat.row_count == 4
+    assert (
+        stat.oldest_scraped_at is not None
+        and stat.oldest_scraped_at.date().isoformat() == "2007-01-02"
+    )

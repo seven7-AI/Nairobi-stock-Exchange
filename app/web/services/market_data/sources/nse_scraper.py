@@ -53,6 +53,12 @@ JSON_OBJECT_COLUMNS = (
 )
 JSON_ARRAY_COLUMNS = ("price_history",)
 
+#: The canonical (ticker, trade_date) timeline the scraper project maintains:
+#: 2007-2024 archive rows plus one row per ticker per daily scrape. See the scraper's
+#: docs/CANONICAL_SCHEMA.md. Read-only here, like everything else in this source.
+OBSERVATIONS_TABLE = "stock_observations"
+INSTRUMENTS_TABLE = "instruments"
+
 #: Spiders the scraper runs, and the table each one feeds.
 SPIDER_TABLES = {
     "stockanalysis_scraper": STOCKANALYSIS_TABLE,
@@ -191,6 +197,72 @@ class NseScraperSource:
         )
         return []
 
+    # -- canonical timeline -------------------------------------------------
+    def has_observations(self) -> bool:
+        """Whether the scraper database carries the canonical timeline yet."""
+        with self._connect() as connection:
+            return self._table_exists(connection, OBSERVATIONS_TABLE)
+
+    def fetch_observations(
+        self,
+        ticker_symbol: str,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+        limit: int = 10_000,
+    ) -> list[dict[str, Any]]:
+        """One instrument's daily observations, oldest first.
+
+        ``ticker_symbol`` is the canonical code (``ABSA``); rows the archive recorded
+        under a retired code (``BBK``) are already resolved and carry it in
+        ``source_ticker``. Each row's ``quality_flags`` is decoded to a list.
+        """
+        clauses = ["ticker_symbol = ?"]
+        params: list[Any] = [ticker_symbol.strip().upper()]
+        if start is not None:
+            clauses.append("trade_date >= ?")
+            params.append(start.isoformat())
+        if end is not None:
+            clauses.append("trade_date <= ?")
+            params.append(end.isoformat())
+        params.append(limit)
+
+        with self._connect() as connection:
+            if not self._table_exists(connection, OBSERVATIONS_TABLE):
+                logger.warning("scraper_table_missing", table=OBSERVATIONS_TABLE)
+                return []
+            rows = connection.execute(
+                f"SELECT * FROM {OBSERVATIONS_TABLE} WHERE {' AND '.join(clauses)} "
+                "ORDER BY trade_date ASC LIMIT ?",
+                params,
+            ).fetchall()
+
+        records = []
+        for row in rows:
+            record = dict(row)
+            record["quality_flags"] = _decode_json_column(
+                record.get("quality_flags"), "quality_flags", record.get("ticker_symbol", "?"), []
+            )
+            records.append(record)
+        logger.info("scraper_observations_fetched", ticker=params[0], rows=len(records))
+        return records
+
+    def fetch_instruments(self, *, sector: str | None = None) -> list[dict[str, Any]]:
+        """The instrument master the scraper maintains: canonical ticker, type, sector."""
+        with self._connect() as connection:
+            if not self._table_exists(connection, INSTRUMENTS_TABLE):
+                return []
+            if sector is None:
+                rows = connection.execute(
+                    f"SELECT * FROM {INSTRUMENTS_TABLE} ORDER BY ticker_symbol"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    f"SELECT * FROM {INSTRUMENTS_TABLE} WHERE sector = ? ORDER BY ticker_symbol",
+                    (sector,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
     # -- run artifacts ------------------------------------------------------
     def read_quality_gate(self) -> dict[str, dict[str, Any]]:
         """The last run's verdict per spider.
@@ -270,6 +342,8 @@ class NseScraperSource:
                     for table in (STOCKANALYSIS_TABLE, STOCK_DATA_TABLE)
                     if self._table_exists(connection, table)
                 ]
+                if self._table_exists(connection, OBSERVATIONS_TABLE):
+                    tables.append(self._observations_stat(connection))
         except ExternalServiceError as exc:
             return SourceHealth(
                 name=self.name, reachable=False, location=location, detail=exc.message
@@ -307,6 +381,18 @@ class NseScraperSource:
             newest_scraped_at=_parse_timestamp(row[2]),
         )
 
+    def _observations_stat(self, connection: sqlite3.Connection) -> TableStat:
+        """The timeline is keyed on trade_date, not scraped_at."""
+        row = connection.execute(
+            f"SELECT count(*), min(trade_date), max(trade_date) FROM {OBSERVATIONS_TABLE}"
+        ).fetchone()
+        return TableStat(
+            name=OBSERVATIONS_TABLE,
+            row_count=int(row[0] or 0),
+            oldest_scraped_at=_parse_timestamp(f"{row[1]}T00:00:00+00:00") if row[1] else None,
+            newest_scraped_at=_parse_timestamp(f"{row[2]}T00:00:00+00:00") if row[2] else None,
+        )
+
     def price_history_depth(self) -> dict[int, int]:
         """How many observations each ticker carries, as depth -> ticker count.
 
@@ -323,4 +409,4 @@ class NseScraperSource:
         return {int(row["depth"] or 0): int(row["tickers"]) for row in rows}
 
 
-__all__ = ["SOURCE_NAME", "NseScraperSource"]
+__all__ = ["INSTRUMENTS_TABLE", "OBSERVATIONS_TABLE", "SOURCE_NAME", "NseScraperSource"]

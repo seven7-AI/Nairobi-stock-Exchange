@@ -563,6 +563,13 @@ Two production guards refuse to boot a misconfigured deployment:
 
 ## Current State & Known Limitations
 
+0. **The research parquet is sign-corrupted and deprecated.** The notebook's
+   `_clean_numeric` strips every `-`, turning 91,276 negative changes positive; its own
+   "40,367 change-vs-price mismatches" were that bug. Do not feed
+   `backfill_price_bars_from_parquet` from it. The correct 2007→today timeline is the
+   scraper database's `stock_observations` table (`docs/data-sources.md`).
+
+
 1. **`stockanalysis_stocks` is not ours.** An external scraper outside this repo
    creates and writes it. It is mapped read-only, excluded from Alembic
    autogenerate by the `include_object` hook, and CI fails the build if a

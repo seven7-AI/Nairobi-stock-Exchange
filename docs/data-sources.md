@@ -146,6 +146,35 @@ GET /health/ready                         # includes market_data_source
 
 ---
 
+## The canonical timeline (2007 → today)
+
+Since 2026-09-12 the scraper's database also holds **one row per ticker per trading
+day** in `stock_observations`: the 2007–2024 NSE archive (285,819 rows, imported from
+this repository's `NSE_DATA/`) plus every daily scrape, with `instruments` (official NSE
+sector, instrument type) and `instrument_aliases` (`BBK → ABSA` and six more).
+
+```text
+NSE_DATA/*.csv  ──import──▶  stock_observations  ◀──append daily──  stockanalysis_scraper
+                             instruments · instrument_aliases
+                                        │
+                                        │  NseScraperSource.fetch_observations("KCB")
+                                        ▼
+                             2007-01-02 … 2024-12-31 (archive) … 2026-09-12 (scraper)
+```
+
+```python
+source.fetch_observations("ABSA")             # includes the years it traded as BBK
+source.fetch_observations("KCB", start=date(2020, 1, 1))
+source.fetch_instruments(sector="Banking")
+```
+
+The schema, lineage evidence, the four repaired source dates and the idempotency
+mechanics are documented in the scraper repository's `docs/CANONICAL_SCHEMA.md`.
+This repository's `docs/STATUS.md` records what was selected and excluded and why.
+
+> `research/data/canonical_nse_prices.parquet` is **sign-corrupted** (its cleaning
+> stripped every `-`, flipping 91,276 negative changes) and is no longer a data source.
+
 ## Why Supabase is no longer used
 
 `nse-be` previously read a Supabase `stockanalysis_stocks` table. That path was dead:
