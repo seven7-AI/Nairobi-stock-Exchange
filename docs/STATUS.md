@@ -37,7 +37,7 @@ evidence:
 | Decision | Why |
 |---|---|
 | **`-` is missing only when it is the whole cell** | 91,276 `Change` cells are negative numbers; the notebook stripped every `-` and corrupted them |
-| Ticker lineage resolved to the current code, original kept in `source_ticker` | seven aliases verified by date span with zero overlap; `CFCI→LBTY` found, `CFCI→CIC` rejected |
+| Ticker lineage resolved to the current code, original kept in `source_ticker` | eight aliases verified by date span with zero overlap; `CFCI→LBTY` and the scraper-side `HFCB→HFCK` found, `CFCI→CIC` rejected |
 | Three 2009 dates and one 2017 date repaired | each misdated block sits exactly in the gap of a missing weekday; repairs are flagged and the raw date kept |
 | 2017-03-24 second block quarantined, not repaired | no positional evidence for another date |
 | Indices, rights and preference shares kept, typed | benchmarks are useful; excluded from equity aggregates by type |
@@ -66,7 +66,7 @@ evidence:
 
 ## Validation results (from the scraper repository's `reports/historical_validation.md`)
 
-PASS — 27 checks, 0 failures, 13 informational. 285,819 archive rows + 63 scraper rows
+PASS — 28 checks, 0 failures, 13 informational. 285,819 archive rows + 63 scraper rows
 for 2026-09-12 coexist; 0 duplicate `(ticker, trade_date)`; `close − previous == change`
 for 100.00% of 179,040 rows; KCB reads 2007-01-02 → 2026-09-12 unbroken; all seven
 spot checks match their CSV line byte-for-byte.

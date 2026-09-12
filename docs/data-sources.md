@@ -151,7 +151,7 @@ GET /health/ready                         # includes market_data_source
 Since 2026-09-12 the scraper's database also holds **one row per ticker per trading
 day** in `stock_observations`: the 2007–2024 NSE archive (285,819 rows, imported from
 this repository's `NSE_DATA/`) plus every daily scrape, with `instruments` (official NSE
-sector, instrument type) and `instrument_aliases` (`BBK → ABSA` and six more).
+sector, instrument type) and `instrument_aliases` (`BBK → ABSA` and seven more).
 
 ```text
 NSE_DATA/*.csv  ──import──▶  stock_observations  ◀──append daily──  stockanalysis_scraper
