@@ -70,3 +70,41 @@ PASS — 28 checks, 0 failures, 13 informational. 285,819 archive rows + 63 scra
 for 2026-09-12 coexist; 0 duplicate `(ticker, trade_date)`; `close − previous == change`
 for 100.00% of 179,040 rows; KCB reads 2007-01-02 → 2026-09-12 unbroken; all seven
 spot checks match their CSV line byte-for-byte.
+
+
+---
+
+## Visualizations — stock-growth diagrams  ✅ 2026-09-12
+
+**What.** `diagrams/stock-growth/<TICKER>.html`: one interactive plotly chart per
+instrument, 2007 → latest scrape, plus `GET /api/v1/market-data/{ticker}/growth` serving
+the same figure. `nse-analysis plot-stock KCB` / `--all` regenerate them.
+
+**Where and why here.** nse-be is the analytics side and already reads the canonical
+timeline read-only through `NseScraperSource.fetch_observations()`; the scraper only
+produces data. Chart logic is a business service (`app/web/services/visualizations/`),
+so the CLI and the API share it and future sector/market/comparison charts are siblings
+of `stock_growth.py` writing to siblings of `diagrams/stock-growth/`.
+
+**Data path.** `stock_observations` → `build_growth_series()` (pure) → `figure_for()` →
+HTML. No second price source. New scraper rows are included on the next regeneration.
+
+**Honesty rules baked in.**
+- Gaps > 14 days break the line and are shaded; nothing is interpolated. The
+  2025-01-01 → 2026-07-25 stretch is a gap for every instrument.
+- Prices are unadjusted (the archive's `Adjust` column covers 37,513 of 285,819 rows —
+  too sparse to build an adjusted series). Close-to-close steps > 2.5× are marked as
+  suspected corporate actions instead: KCB 10:1 (2007-04-03), Barclays 4:1 (2011-05-31),
+  Equity 2007 and 2009 — all real events, none smoothed.
+- `traded as BBK → ABSA` appears in the subtitle where the archive used a retired code.
+
+**Prerequisite done in the scraper repo.** The 1,907 real 2026 points that lived only in
+`price_history` JSON were replayed into `stock_observations`, so the 2026 end of each
+chart has 36 points rather than one (scraper `docs/STATUS.md`, phase 11).
+
+**Why plotly, why one shared JS file.** Interactive hover/zoom was chosen over static
+PNG. `plotly.min.js` (4.2 MB) is written once to `diagrams/assets/`; each chart
+references it relatively and is ~200 KB, so the folder works offline and stays small.
+
+**Tests.** 9 unit tests on the pure series/figure (gaps vs holidays, split detection,
+lineage, empty/unusable rows, no inlined JS) and 3 API tests (200 HTML, 404, 403/401).

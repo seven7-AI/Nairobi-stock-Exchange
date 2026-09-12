@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     logs_dir: Path = ROOT_DIR / "logs"
     indicators_file: Path = ROOT_DIR / "indicators.txt"
     research_data_dir: Path = ROOT_DIR / "research" / "data"
+    #: Generated visualizations, one subfolder per kind (diagrams/stock-growth/, ...).
+    diagrams_dir: Path = ROOT_DIR / "diagrams"
 
     # --- NSE scraper data source ------------------------------------------
     # Market data comes from the ~/nse-stock-scraper project, which runs a daily
@@ -229,6 +231,7 @@ def get_settings() -> Settings:
         settings.weekly_reports_dir,
         settings.monthly_reports_dir,
         settings.logs_dir,
+        settings.diagrams_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
     return settings

@@ -42,6 +42,7 @@ dependencies = [
     "typer>=0.24.0",
     "rich>=14.3.2",
     "requests==2.31.0",
+    "plotly>=7.0.0",
 ]
 
 [project.scripts]
@@ -101,7 +102,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["app/alembic/versions", "research"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "supabase.*", "scipy.*"]
+module = ["celery.*", "supabase.*", "scipy.*", "plotly.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

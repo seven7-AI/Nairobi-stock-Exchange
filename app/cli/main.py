@@ -237,6 +237,58 @@ def generate_monthly_report() -> None:
     _generate(ReportKind.MONTHLY, "Monthly report")
 
 
+@app.command("plot-stock")
+def plot_stock(
+    ticker: str | None = typer.Argument(None, help="Canonical ticker, e.g. KCB or ABSA"),
+    all_instruments: bool = typer.Option(False, "--all", help="Regenerate every instrument"),
+    out_dir: Path | None = typer.Option(None, "--out", help="Override diagrams/ root"),
+) -> None:
+    """Draw a stock's growth from 2007 to the latest scrape into diagrams/stock-growth/.
+
+    Reads the canonical stock_observations timeline through the same market-data
+    source everything else uses. Gaps are drawn as gaps; prices are unadjusted and
+    suspected corporate actions (splits) are marked, never smoothed away.
+    """
+    from app.web.core.exceptions import ResourceNotFoundError
+    from app.web.services.visualizations import load_growth_series, write_diagram
+
+    settings, source = _bootstrap()
+    if not isinstance(source, NseScraperSource):
+        raise typer.BadParameter("plot-stock needs the nse_scraper source (canonical timeline).")
+    diagrams_dir = out_dir or settings.diagrams_dir
+    logger = get_logger("app.cli.plot_stock")
+
+    if all_instruments:
+        tickers = [i["ticker_symbol"] for i in source.fetch_instruments()]
+    elif ticker:
+        tickers = [ticker]
+    else:
+        raise typer.BadParameter("give a ticker or --all")
+
+    written, skipped = 0, []
+    for symbol in tickers:
+        try:
+            series = load_growth_series(source, symbol)
+        except ResourceNotFoundError as exc:
+            skipped.append(symbol)
+            console.print(f"[yellow]skip[/yellow] {symbol}: {exc.message}")
+            continue
+        path = write_diagram(series, diagrams_dir)
+        written += 1
+        d = series.summary()
+        actions = len(d["suspected_corporate_actions"])
+        console.print(
+            f"[green]{symbol:7s}[/green] {d['points']:5d} pts  "
+            f"{d['first']['date']} → {d['last']['date']}  {d['overall_change_pct']:+8.1f}%  "
+            f"gaps={len(d['gaps'])} actions={actions}  → {path.relative_to(diagrams_dir.parent)}"
+        )
+    logger.info("diagrams_written", kind="stock-growth", written=written, skipped=skipped)
+    console.print(
+        f"\n{written} diagram(s) written to {diagrams_dir / 'stock-growth'}"
+        + (f"; skipped {skipped}" if skipped else "")
+    )
+
+
 @app.command("seed-instruments")
 def seed_instruments() -> None:
     """Seed the instrument master from research/data/ticker_master.parquet."""

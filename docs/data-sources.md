@@ -168,6 +168,10 @@ source.fetch_observations("KCB", start=date(2020, 1, 1))
 source.fetch_instruments(sector="Banking")
 ```
 
+**Visualized:** `diagrams/stock-growth/<TICKER>.html` and
+`GET /api/v1/market-data/{ticker}/growth` draw this timeline — gaps as gaps, prices
+unadjusted with suspected splits marked. See `diagrams/README.md`.
+
 The schema, lineage evidence, the four repaired source dates and the idempotency
 mechanics are documented in the scraper repository's `docs/CANONICAL_SCHEMA.md`.
 This repository's `docs/STATUS.md` records what was selected and excluded and why.

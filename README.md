@@ -120,6 +120,18 @@ uv run nse-analysis backfill-prices           # 18 years from the canonical arch
 
 Reports land in `reports/{daily,weekly,monthly}/`.
 
+## Diagrams
+
+`diagrams/stock-growth/<TICKER>.html` — one interactive chart per instrument, 2007 →
+latest scrape, drawn from the canonical timeline. Gaps are gaps; prices are unadjusted
+and suspected splits are marked. See [diagrams/README.md](diagrams/README.md).
+
+```bash
+uv run nse-analysis plot-stock KCB      # one chart
+uv run nse-analysis plot-stock --all    # regenerate all
+GET /api/v1/market-data/KCB/growth      # the same chart, served
+```
+
 ## Data sources
 
 Market data comes from the **`~/nse-stock-scraper`** project — a separate repo that runs

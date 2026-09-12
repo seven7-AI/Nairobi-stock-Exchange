@@ -186,3 +186,61 @@ async def test_readiness_reports_the_market_data_source(
     body = response.json()
     assert "market_data_source" in body
     assert body["market_data_source"]["name"] == "nse_scraper"
+
+
+# --- stock-growth chart ------------------------------------------------------------------
+GROWTH_URL = "/api/v1/market-data/{ticker}/growth"
+
+
+@pytest.fixture
+def timeline_scraper(fake_scraper: Path) -> Path:
+    """Add the canonical timeline tables to the fake scraper layout."""
+    from app.tests.unit.test_nse_scraper_source import OBSERVATIONS_SCHEMA
+
+    connection = sqlite3.connect(fake_scraper / "data" / "nse_scraper.sqlite3")
+    connection.executescript(OBSERVATIONS_SCHEMA)
+    now = datetime.now(tz=UTC).isoformat()
+    connection.execute(
+        "INSERT INTO instruments VALUES ('KCB','KCB Group Plc','ordinary',NULL,'Banking','f',"
+        "'2007-01-02','2026-09-12',1,?,?)",
+        (now, now),
+    )
+    for day, close in (("2007-01-02", 243.0), ("2007-01-03", 240.0), ("2026-09-12", 94.0)):
+        connection.execute(
+            "INSERT INTO stock_observations (ticker_symbol, trade_date, source_ticker, "
+            "close_price, data_source, quality_flags, created_at, updated_at) "
+            "VALUES ('KCB',?,'KCB',?,?,'[]',?,?)",
+            (day, close, "nse_archive:2007" if day < "2020" else "nse_scraper", now, now),
+        )
+    connection.commit()
+    connection.close()
+    return fake_scraper
+
+
+async def test_growth_chart_is_served_as_html(
+    timeline_scraper: Path, client: AsyncClient, token_for_role
+) -> None:
+    actor = await token_for_role("analyst")
+    response = await client.get(GROWTH_URL.format(ticker="kcb"), headers=actor["headers"])
+    assert response.status_code == 200, response.text[:300]
+    assert response.headers["content-type"].startswith("text/html")
+    assert "KCB Group Plc" in response.text
+    assert "plotly" in response.text.lower()
+
+
+async def test_growth_chart_unknown_ticker_is_404(
+    timeline_scraper: Path, client: AsyncClient, token_for_role
+) -> None:
+    actor = await token_for_role("analyst")
+    response = await client.get(GROWTH_URL.format(ticker="NOPE"), headers=actor["headers"])
+    assert response.status_code == 404
+
+
+async def test_growth_chart_is_role_gated(
+    timeline_scraper: Path, client: AsyncClient, token_for_role
+) -> None:
+    actor = await token_for_role("client")
+    assert (
+        await client.get(GROWTH_URL.format(ticker="KCB"), headers=actor["headers"])
+    ).status_code == 403
+    assert (await client.get(GROWTH_URL.format(ticker="KCB"))).status_code == 401
