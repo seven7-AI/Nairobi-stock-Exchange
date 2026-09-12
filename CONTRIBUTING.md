@@ -68,6 +68,11 @@ make ci        # the full gate — identical to what pre-push runs
 | `pre-commit` | ruff check + format — fast enough to not notice |
 | `pre-push` | secret scan, ruff, format, mypy, the full pytest suite against a disposable PostgreSQL, and the Alembic drift probe |
 
+`make hooks` also sets `core.sshCommand` with SSH keepalives for this repo. Git opens
+the connection to GitHub *before* the pre-push hook runs, and a gate that takes several
+minutes can outlive the server's idle timeout — the push then fails with exit 141 after
+every check passed. The keepalive prevents that.
+
 `git push --no-verify` skips the gate. If you use it, you are the only thing standing
 between a regression and `main`.
 

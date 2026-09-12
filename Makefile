@@ -24,8 +24,7 @@ explore: ## Query CodeGraph: make explore Q="require_roles rbac.py"
 # ---------------------------------------------------------------------------
 install: ## Install dependencies from the lockfile and the local git hooks
 	uv sync --dev
-	git config core.hooksPath .githooks
-	@echo "git hooks installed (checks run locally; this repo has no hosted CI)"
+	$(MAKE) hooks
 
 # ---------------------------------------------------------------------------
 # Quality gates
@@ -55,7 +54,11 @@ ci: ## Run the FULL local gate — exactly what pre-push runs. There is no hoste
 
 hooks: ## Install the git hooks that enforce the gate locally
 	git config core.hooksPath .githooks
-	@echo "core.hooksPath -> .githooks (pre-commit: lint; pre-push: full gate)"
+	# git opens the SSH connection BEFORE running pre-push; a multi-minute gate can
+	# outlive GitHub's idle timeout and the push then dies with SIGPIPE (exit 141).
+	# Keepalives, scoped to this repo, hold the connection open for the hook's duration.
+	git config core.sshCommand "ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=60"
+	@echo "core.hooksPath -> .githooks (pre-commit: lint; pre-push: full gate); ssh keepalive set"
 
 # ---------------------------------------------------------------------------
 # Run
