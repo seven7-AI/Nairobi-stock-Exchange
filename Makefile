@@ -88,6 +88,13 @@ migration: ## Autogenerate a migration: make migration M="add watchlists"
 downgrade: ## Roll back one migration
 	uv run alembic downgrade -1
 
+migrate-analytics: ## Create/migrate the analytics store (SQLite, own Alembic chain)
+	uv run nse-analysis analytics upgrade
+
+migration-analytics: ## Autogenerate an analytics-store migration: make migration-analytics M="add market_metrics"
+	@test -n "$(M)" || (echo 'usage: make migration-analytics M="description"' && exit 1)
+	uv run alembic -n analytics revision --autogenerate -m "$(M)"
+
 # ---------------------------------------------------------------------------
 # Reports (CLI path — same services the API uses)
 # ---------------------------------------------------------------------------

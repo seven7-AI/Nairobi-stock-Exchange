@@ -79,4 +79,23 @@ if [[ -n "${TEST_DATABASE_URL:-}" ]]; then
   fi
 fi
 
+# --- 5. analytics-store drift ------------------------------------------------
+# The analytics SQLite chain (alembic -n analytics) is probed the same way,
+# against a throwaway file so the real store is never touched.
+bold "→ analytics migration drift probe"
+ANALYTICS_PROBE_DIR=$(mktemp -d)
+ANALYTICS_PROBE_DB="${ANALYTICS_PROBE_DIR}/probe.sqlite3"
+ANALYTICS_DB_PATH="${ANALYTICS_PROBE_DB}" uv run alembic -n analytics upgrade head >/dev/null 2>&1 \
+  || fail "analytics migrations do not apply to an empty store"
+ANALYTICS_DB_PATH="${ANALYTICS_PROBE_DB}" uv run alembic -n analytics revision --autogenerate -m drift-probe >/dev/null 2>&1 || true
+PROBE=$(ls -t app/alembic_analytics/versions/*drift_probe*.py 2>/dev/null | head -1 || true)
+rm -rf "${ANALYTICS_PROBE_DIR}"
+if [[ -n "${PROBE}" ]]; then
+  if grep -qE 'op\.(create_table|drop_table|add_column|drop_column|alter_column|create_index|drop_index)' "${PROBE}"; then
+    cat "${PROBE}"; rm -f "${PROBE}"; fail "analytics models have drifted from migrations — generate one with: uv run alembic -n analytics revision --autogenerate -m '<what changed>'"
+  fi
+  rm -f "${PROBE}"
+fi
+ok "analytics migration drift probe"
+
 bold "pre-push: all checks passed"

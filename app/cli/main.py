@@ -20,6 +20,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from app.cli.analytics import analytics_app
 from app.web.api.routers.market_data.views import MONTHLY_WINDOW, WEEKLY_WINDOW
 from app.web.config import Settings, get_settings
 from app.web.db.models.enums import ReportKind
@@ -35,6 +36,7 @@ from app.web.services.reports.pipeline import load_market_data, run_pipeline
 from app.web.utils.logger import configure_logging, get_logger
 
 app = typer.Typer(help="NSE Analytics backend CLI")
+app.add_typer(analytics_app, name="analytics")
 console = Console()
 
 

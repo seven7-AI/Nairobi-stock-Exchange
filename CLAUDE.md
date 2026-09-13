@@ -242,6 +242,23 @@ extend the source instead.
 
 > Before touching market data: `codegraph explore "NseScraperSource MarketDataSource DataFetcher"`
 
+**Analytics store (SQLite, own Alembic chain) — `app/web/db/analytics/`:**
+
+Every *derived* analytical result — metrics, factor scores, valuations, forecasts,
+backtests, job state, the model registry — lives in `data/nse_analytics.sqlite3`
+(`Settings.analytics_db_path`), on `AnalyticsBase`, migrated by `app/alembic_analytics/`:
+
+```bash
+uv run nse-analysis analytics upgrade                       # create / migrate (idempotent)
+uv run alembic -n analytics revision --autogenerate -m "…"  # after adding an analytics model
+```
+
+Rules: never put a platform model on `AnalyticsBase` or an analytics model on `Base`;
+every analytics row carries a `calc_version_id` and a `status` (missing ≠ zero); raw
+observations are never copied in — they are read through `MarketDataSource`.
+
+> Before touching the store: `codegraph explore "AnalyticsBase upgrade_analytics_db analytics_session"`
+
 **Table we do NOT own:**
 
 `stockanalysis_stocks` is populated by an **external scraper outside this repo**. It is

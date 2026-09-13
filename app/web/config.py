@@ -121,6 +121,18 @@ class Settings(BaseSettings):
     #: Generated visualizations, one subfolder per kind (diagrams/stock-growth/, ...).
     diagrams_dir: Path = ROOT_DIR / "diagrams"
 
+    # --- analytics store --------------------------------------------------
+    # Every derived analytical result (metrics, factor scores, valuations,
+    # forecasts, backtests, job state, model registry) lives in a SQLite file
+    # this repository owns and migrates with its own Alembic chain
+    # (`alembic -n analytics`). Raw observations never live here - they stay in
+    # the scraper's database and are read through MarketDataSource.
+    analytics_db_path: Path = Field(
+        default=ROOT_DIR / "data" / "nse_analytics.sqlite3",
+        alias="ANALYTICS_DB_PATH",
+        description="SQLite file holding the quantitative research engine's derived tables.",
+    )
+
     # --- NSE scraper data source ------------------------------------------
     # Market data comes from the ~/nse-stock-scraper project, which runs a daily
     # Scrapy job under cron and writes to its own local SQLite database. nse-be
@@ -232,6 +244,7 @@ def get_settings() -> Settings:
         settings.monthly_reports_dir,
         settings.logs_dir,
         settings.diagrams_dir,
+        settings.analytics_db_path.parent,
     ):
         directory.mkdir(parents=True, exist_ok=True)
     return settings
