@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from app.web.db.analytics.base import AnalyticsBase
 from app.web.db.analytics.models.calc_version import CalcVersion
+from app.web.db.analytics.models.classification import Classification
 from app.web.db.analytics.models.job_run import JobRun, JobStatus
 from app.web.db.analytics.models.model_registry import ModelKind, ModelRegistryEntry, ModelStatus
 
 __all__ = [
     "AnalyticsBase",
     "CalcVersion",
+    "Classification",
     "JobRun",
     "JobStatus",
     "ModelKind",

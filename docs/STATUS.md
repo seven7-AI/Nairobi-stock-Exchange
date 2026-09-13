@@ -211,3 +211,44 @@ revenue scales to 173,395,000,000 KES, a `-` cell is MISSING.
 CodeGraph: `NseScraperSource` has 28 callers; only methods were added, no signature
 changed. `fetch_observations` (4 callers, `stock_growth.py`) untouched — the bulk
 variant sits beside it.
+
+## #4 Classification layer — point-in-time industry and sector  ✅ 2026-09-13
+
+`classifications` (analytics store, Alembic `20260913_0002`): one row per instrument
+per validity range — `sector_code` (normalised taxonomy: banking, energy, telecommunication
+…), the official `sector_label` as printed at the time, `industry` (stockanalysis
+profile, e.g. "Commercial Banks"), `valid_from`/`valid_to`, `source`, `evidence`.
+
+**Sources, in order of authority**
+
+1. The five `NSE_DATA/NSE_data_stock_market_sectors_*.csv` files (2013, 2020, 2021,
+   2022, 2023/24) read by `classification/sector_files.py`. Two defects repaired with
+   the repair recorded on every affected row: the 2023/24 file's *section-header* row
+   (`Construction and Allied,Energy and Petroleum,`) — KEGN, KPLC, KPLC-P4/P7, TOTL,
+   UMME are Energy and Petroleum, not Construction; and the 2013 file labelling
+   indices with their own code. "Telecommunication and Technology" → "Telecommunication"
+   is a spelling change, one code. The 2013 membership is carried back to each
+   instrument's first observation (the assumption is written on the row).
+2. `CURATED` — the **16 instruments no sector file lists** (contrary to the earlier
+   note in this file, they are in none of the five): ten delisted before 2013 (ACCS,
+   BAUM, BERG, CITY, CMC, ICDC, MASH, PAFR, REA, UTK) and six listed after the 2023/24
+   file (KPC, FMLY, AMAC, SKL, TRFC, ALP), each with its evidence.
+3. The scraper's instrument master — rights issues inherit their parent's sector
+   (`CFC-R`, `KCB-R` …), `^NBDI` by instrument type.
+
+Scraper-era listings with no `first_seen_date` start at their first observation (KPC,
+ALP … 2026-07-26), never at 2007. Lineage resolves through `instrument_aliases`
+(`BBK` rows become `ABSA` stints).
+
+**Live**: `nse-analysis analytics classify` → **102 rows for 102 instruments, 0
+unclassified**: banking 19, commercial services 17, agricultural 9, energy 9, indices 9,
+manufacturing 9, investment 8, insurance 7, construction 5, automobiles 3, REIT 3,
+telecommunication 2, ETF 1, investment services 1; industry filled for 61 (the
+stockanalysis-covered universe). Sources: sector files 75, curated 16, instrument master
+11. Rebuild is a wholesale replace inside one transaction — idempotent by construction.
+
+`ClassificationIndex.sector_for(ticker, as_of)` / `peers_for` / `members` are the
+point-in-time lookups the factor and valuation engines will use. 18 tests: defect
+repair on the real files, taxonomy refusal of unknown labels, lineage, curated coverage,
+industry from the profile snapshot, a synthetic reclassification producing two ranges
+that are invisible before they happened, persistence idempotency, CLI.
