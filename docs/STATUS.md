@@ -296,3 +296,42 @@ data is fixed with zero duplicate rows, CLI exit codes, and the live database.
 
 Also in this issue: `UTCDateTime` on every analytics timestamp column so SQLite hands
 back aware UTC datetimes.
+
+## #6 Trading calendar, PriceSeries and the returns engine  ✅ 2026-09-14
+
+First Phase-2 engine. `services/analytics/series.py` turns an instrument's rows into a
+`PriceSeries` (closes + volumes on a `DatetimeIndex`, **segments** split at every break
+longer than `gap_threshold_days`, source-ticker lineage, flagged rows, provenance) with
+`as_of(day)` as the single point-in-time operation. `services/analytics/returns/engine.py`
+computes 1D · 1W · 1M · 3M · 6M · 12M · 24M · 36M · YTD · YoY trailing returns, plus
+cumulative and rolling series, on the instrument's own observations:
+
+- the end is the last observation on/before `as_of`; older than the threshold →
+  `unavailable` (an `as_of` inside the 2025 hole never reports December-2024 numbers);
+- the start is the last observation on/before `end − window` (1D: the previous one);
+  a start more than the threshold before its target, or in another segment, is
+  `unavailable` **naming the gap** — windows are never bridged across the hole;
+- new listings (no start), delistings (stale end) and thin listings each get the reason;
+- prices are unadjusted; a window containing a flagged observation is marked
+  `contains_flagged` so the factor engine can discount it.
+
+`market_metrics` (Alembic `20260913_0004`): one row per
+`(ticker, as_of_date, metric, calc_version_id)` with `value`, `status`, `reason`,
+`window_start/end`, `contains_flagged`, `provenance`; upsert on the natural key so a
+re-run rewrites identical rows. `nse-analysis analytics compute returns [--as-of] [--ticker]`
+records a `job_runs` row with per-metric known counts.
+
+**Live** (`--as-of 2024-12-31`, 102 instruments, 1,020 rows, 0 skipped): 12M known for
+60, zero for 12 (unchanged closes on thin names), unavailable for 30 (delisted before
+2024, or listed after). Top 2024 12M returns: PORT +282 %, ORCH +259 %, KPLC +239 %,
+IMH +107 %; worst SGL −35 %, KNRE −32 %, NMG −28 %.
+
+Tests (`test_returns_engine.py`, 24 + 1 realdata): series ordering/dedupe/non-positive
+closes, gaps and segments, `as_of` truncation, every window incl. weekend `as_of`,
+insufficient history, gap-crossing and in-gap `as_of`, delisting, thin listing,
+flagged window, YTD, tiny prices, cumulative/rolling; **hand-computed KCB** at
+2019-12-31 (12M 54.0/37.45−1 = 44.19 %, 6M vs 2019-06-28, 3M vs 2019-09-30, 1W vs
+2019-12-24, 1D vs 2019-12-30, YTD); KCB windows crossing the 2025 gap unavailable;
+the 2007 split visible; a **look-ahead test** (appending or tampering rows after T
+leaves every metric byte-identical); the compute job idempotent (upsert, not append)
+with unavailable rows carrying reasons; CLI.
