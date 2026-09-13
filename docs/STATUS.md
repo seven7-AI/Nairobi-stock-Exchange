@@ -129,3 +129,47 @@ closed after rendering so `--all` does not accumulate 102 open figures.
 `GET /api/v1/market-data/{ticker}/growth` now returns `image/png`. CLI unchanged.
 Tests updated (NaN break + one span patch; one dashed line per corporate action; PNG
 magic bytes and no leaked figures; API `image/png`). Reviewed `KCB.png` visually.
+
+---
+
+# Quantitative research engine
+
+Tracking epic: [#24](https://github.com/seven7-AI/Nairobi-stock-Exchange/issues/24). One
+issue per component, one branch per issue, local gate only. Decisions taken with the
+user before the first line was written:
+
+- **Fundamentals** are crawled from stockanalysis.com statement pages into append-only,
+  point-in-time tables in the scraper (`nse-stock-scraper#2`).
+- **Derived analytics** live in an nse-be-owned SQLite file with its own Alembic chain;
+  the scraper database stays the read-only raw source of truth.
+- **Jobs** run from cron + `nse-analysis analytics ...` chained after the 09:00 scrape.
+- The **2025-01 → 2026-07 price gap** is missing data, flagged, never filled.
+
+## #2 Analytics store  ✅ 2026-09-13
+
+`data/nse_analytics.sqlite3` (gitignored; `Settings.analytics_db_path`, env
+`ANALYTICS_DB_PATH`) holds every derived result. It is a second SQLAlchemy metadata
+(`AnalyticsBase`, `app/web/db/analytics/`) and a second Alembic chain
+(`app/alembic_analytics/`, `uv run alembic -n analytics ...`, batch mode for SQLite),
+deliberately disjoint from the Postgres platform chain. WAL + `foreign_keys=ON` on every
+connection.
+
+First revision `20260913_0001`: `job_runs` (job state, watermark, counts, error, details),
+`calc_versions` (name + sha256 of the canonical config JSON, unique — every later table
+points here so a number can always be tied to the configuration that produced it),
+`model_registry` (name/version/kind/status, features, params, training and backtest
+periods, performance).
+
+CLI: `nse-analysis analytics upgrade` (idempotent; creates or migrates) and
+`analytics status` (revision vs head, row counts; exit 1 when behind). `make
+migrate-analytics`, `make migration-analytics M="..."`. Pre-push gained a second drift
+probe that migrates a throwaway file and autogenerates against it.
+
+Tests (`app/tests/unit/test_analytics_store.py`, 13): real migrations on a temp file,
+idempotent upgrade, downgrade→upgrade round trip, in-process autogenerate diff is empty,
+pragmas, status without side effects, JSON/date round trips, unique constraints,
+rollback on error, plain-sqlite readability, CLI upgrade/status.
+
+CodeGraph: `get_settings` has 26 callers — the new field has a default so none change;
+`Base`/`get_sync_session_factory` (13/11 callers) untouched — the analytics base is a
+separate class so no Postgres model can accidentally land in the SQLite chain.

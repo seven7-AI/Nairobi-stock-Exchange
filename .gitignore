@@ -219,3 +219,7 @@ deployment/.env
 htmlcov/
 .coverage
 coverage.xml
+
+# Analytics store (derived, rebuilt by `nse-analysis analytics jobs`)
+data/*.sqlite3
+data/*.sqlite3-*
