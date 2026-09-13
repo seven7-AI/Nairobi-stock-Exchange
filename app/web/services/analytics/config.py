@@ -70,6 +70,25 @@ class MarketConfig(BaseModel):
     secondary_benchmark_index: str = "^N20I"
 
 
+class DataQualityConfig(BaseModel):
+    """Thresholds for the data-quality checks (``analytics/quality``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: |close / previous close - 1| above this is flagged. 0.5 catches decimal-point
+    #: slips and unflagged corporate actions; a genuine 50 % daily move on the NSE is
+    #: rare enough that flagging it is right.
+    price_jump_threshold: float = Field(default=0.5, gt=0.0, le=5.0)
+    #: A run of this many consecutive zero-volume days is a liquidity finding.
+    zero_volume_streak_days: int = Field(default=20, ge=2)
+    #: |assets - (liabilities + equity)| / assets above this flags a balance sheet.
+    balance_sheet_tolerance: float = Field(default=0.02, ge=0.0, le=0.5)
+    #: A day's low/high must bracket the close within this fraction (rounding slack).
+    ohlc_tolerance: float = Field(default=0.005, ge=0.0, le=0.1)
+    #: Instruments with fewer observations than this are reported, not analysed.
+    min_observations: int = Field(default=20, ge=1)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -78,6 +97,7 @@ class AnalyticsConfig(BaseModel):
     version: str = CONFIG_VERSION
     fundamentals: FundamentalsConfig = Field(default_factory=FundamentalsConfig)
     market: MarketConfig = Field(default_factory=MarketConfig)
+    quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -123,6 +143,7 @@ __all__ = [
     "CONFIG_VERSION",
     "DEFAULT_CONFIG",
     "AnalyticsConfig",
+    "DataQualityConfig",
     "FundamentalsConfig",
     "MarketConfig",
     "register_calc_version",

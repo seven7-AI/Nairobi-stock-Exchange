@@ -252,3 +252,47 @@ point-in-time lookups the factor and valuation engines will use. 18 tests: defec
 repair on the real files, taxonomy refusal of unknown labels, lineage, curated coverage,
 industry from the profile snapshot, a synthetic reclassification producing two ranges
 that are invisible before they happened, persistence idempotency, CLI.
+
+## #5 Data-quality framework  ✅ 2026-09-13
+
+`data_quality_findings` (Alembic `20260913_0003`): a finding is identified by
+`(check, ticker, trade_date, sha256(detail))`; the first run that sees it creates the
+row, later runs move `last_seen_at`, the first run that no longer sees it sets
+`resolved_at`. Nothing is deleted, so the table is today's list *and* the history.
+`nse-analysis analytics dq [--fail-on error|warning|never]` runs the checks, records a
+`job_runs` row, writes `reports/data_quality/<date>.md` + `latest.md` (gitignored) and
+exits 1 on errors by default.
+
+Checks (`services/analytics/quality/checks.py`, pure functions, thresholds in
+`AnalyticsConfig.quality`): `duplicate_observations`, `impossible_values` (non-positive
+close, low > high, close outside the day's range, 52-week low > high, negative volume),
+`price_jumps` (> 50 % vs the previous observation, **not** across a data gap; INFO when
+the row is flagged as a corporate action, WARNING otherwise), `missing_periods` (> 14
+days), `universe_gap` (a gap shared by ≥ ⅓ of the universe collapses into one ERROR),
+`zero_volume_streaks` (≥ 20 days), `thin_history` (< 20 observations), `stale_data`,
+`broken_scrape` (the scraper's own quality gate), `unclassified_instruments`,
+`balance_sheet_consistency` (assets vs liabilities + equity, 2 %),
+`missing_fundamentals`.
+
+**Live run** (102 instruments): 332 findings — 1 error, 217 warnings, 114 info.
+Genuine defects it surfaced, now on record:
+
+| Finding | What it is |
+|---|---|
+| `universe_gap` 57 instruments, 2024-12-31 → 2026-07-26 | the known 2025 hole, as one ERROR |
+| `impossible_values` × 9 — BAMB/KCB 2022-07-26; BRIT/CIC/COOP/NCBA/SCBK 2022-12-13; EVRD 2018-11-28 | two archive dates where the close sits outside a zero-width day range: the source's day low/high on those days are wrong, not the close |
+| `price_jumps` ^N20I 2024-11-26 +900 % then −90 % | a decimal slip in the NSE 20 archive (18,845 between 1,884 and 1,881) |
+| `price_jumps` DTK-R 2012-07-23/24 (48.5 → 2.3 → 25.0) | a decimal slip on a rights issue |
+| `price_jumps` KCB 2007-04-03, EQTY 2007-04-10 & 2009-03-26, ABSA 2011-05-31, KENO 2010-06-02, NCBA 2007-12-07, ARM 2013-01-02 … | unflagged share splits — the archive never marked them; the growth diagrams already draw them as "suspected corporate action" and the returns engine will treat them the same way |
+| `missing_fundamentals` × 59 | statements captured for 4 tickers so far; the rotation covers the rest over the coming week |
+| `zero_volume_streaks` × 45, `thin_history` × 10 | the illiquid tail of the market, as expected |
+
+Tests (`test_data_quality.py`, 17 + 1 realdata): each check on injected rows, the
+open → still-open → resolved lifecycle (a resolved finding that reappears is a new
+row), the runner on the real-data fixture asserting **its** genuine defects (KCB
+2022-07-26, NCBA 2022-12-13, the ^N20I slip) and nothing spurious, injected defects
+(×10 slip, zero close, doubled balance-sheet assets) found and then resolved when the
+data is fixed with zero duplicate rows, CLI exit codes, and the live database.
+
+Also in this issue: `UTCDateTime` on every analytics timestamp column so SQLite hands
+back aware UTC datetimes.

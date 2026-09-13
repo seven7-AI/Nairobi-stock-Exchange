@@ -83,4 +83,43 @@ def classify() -> None:
         raise typer.Exit(code=1)
 
 
+@analytics_app.command("dq")
+def data_quality(
+    fail_on: str = typer.Option(
+        "error",
+        "--fail-on",
+        help="Exit 1 when findings of this severity or worse exist: error|warning|never",
+    ),
+) -> None:
+    """Run the data-quality checks, record findings, write reports/data_quality/."""
+    from app.web.services.analytics.quality import run_data_quality
+    from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
+
+    settings = _settings()
+    source = build_market_data_source(settings)
+    if not isinstance(source, NseScraperSource):
+        raise typer.BadParameter("dq needs the nse_scraper source (canonical timeline).")
+    report = run_data_quality(settings, source)
+
+    table = Table(title=f"Data quality — {report.instruments} instruments")
+    table.add_column("Check")
+    table.add_column("Findings", justify="right")
+    for check, count in sorted(report.counts_by_check.items()):
+        table.add_row(check, str(count))
+    info = report.counts_by_severity.get("info", 0)
+    table.add_row(
+        "[bold]errors / warnings / info[/bold]", f"{report.errors} / {report.warnings} / {info}"
+    )
+    console.print(table)
+    console.print(
+        f"new {report.reconciled.created} · still open {report.reconciled.still_open} · "
+        f"resolved {report.reconciled.resolved} · report {report.report_path}"
+    )
+    threshold = fail_on.strip().lower()
+    if threshold == "error" and report.errors:
+        raise typer.Exit(code=1)
+    if threshold == "warning" and (report.errors or report.warnings):
+        raise typer.Exit(code=1)
+
+
 __all__ = ["analytics_app"]
