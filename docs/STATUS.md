@@ -173,3 +173,41 @@ rollback on error, plain-sqlite readability, CLI upgrade/status.
 CodeGraph: `get_settings` has 26 callers — the new field has a default so none change;
 `Base`/`get_sync_session_factory` (13/11 callers) untouched — the analytics base is a
 separate class so no Postgres model can accidentally land in the SQLite chain.
+
+## #3 Measure type, provenance, point-in-time fundamentals read path  ✅ 2026-09-13
+
+Depends on `nse-stock-scraper#2` (merged as its PR #3): the scraper now appends
+`financial_statements` (10,765 rows for KCB/SCOM/KEGN/EQTY after the first live run;
+8 rotating tickers a day from tomorrow) and `fundamental_snapshots`.
+
+- `services/analytics/measure.py` — `Measure(value, status, reason, provenance)` with
+  statuses `known · zero · missing · unavailable · not_applicable · not_meaningful`;
+  `safe_div` (negative/zero denominators → not meaningful), `pct_change`, `cagr`, all
+  propagating the first unusable input with its reason. `Provenance` points at table
+  rows or ranges.
+- `services/analytics/config.py` — `AnalyticsConfig` (frozen pydantic; publication
+  lags 90/60 d, gap threshold 14 d, risk-free 12 % *to be reviewed*, benchmark
+  `^NASI`), sha256 `config_hash()`, `register_calc_version()` get-or-create on
+  `(name, hash)`.
+- `NseScraperSource` — `fetch_financial_statements(first_seen_before=…)`,
+  `fetch_fundamental_snapshots(end=…)`, `fetch_observations_bulk(tickers)`,
+  `has_financial_statements()`; all `mode=ro`.
+- `services/analytics/fundamentals/statements.py` — availability rule (live capture →
+  first-seen day; backfilled initial capture → `period_end + lag`, flagged as assumed;
+  restatements never backdated), `point_in_time(rows, as_of)`, `line_item_series`,
+  `latest_line_item`, unit scaling, `-` → MISSING.
+- Real-data fixture: `scripts/build_test_fixture.py` slices the live DB (KCB, EQTY,
+  SCOM, KEGN, ABSA, NCBA, KENO delisted 2019, ACCS delisted 2012, KPC/SKL thin,
+  `^NASI`, `^N20I`; 39,647 observations, 10,765 statement rows) into
+  `app/tests/fixtures/nse_fixture.sqlite3.gz` (2.4 MB) with a manifest; `conftest`
+  fixtures `fixture_source` (always) and `live_source` (`@pytest.mark.realdata`, skips
+  when the DB is absent).
+
+Tests: 46 new (measure 20, config 5, read path + PIT 21 incl. 1 realdata) — e.g. FY2021
+KCB is visible from 2022-03-31 not before, the `Current` ratios column keeps its real
+capture date, a restatement captured 2026-11-01 is invisible on 2026-10-31, KCB FY2025
+revenue scales to 173,395,000,000 KES, a `-` cell is MISSING.
+
+CodeGraph: `NseScraperSource` has 28 callers; only methods were added, no signature
+changed. `fetch_observations` (4 callers, `stock_growth.py`) untouched — the bulk
+variant sits beside it.

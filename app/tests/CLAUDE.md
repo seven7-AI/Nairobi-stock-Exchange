@@ -24,6 +24,14 @@ gap worth closing while you are there.
   steps 400, and step 5 skip succeeds.
 - Never assert on a log line containing a credential; assert that logs are **redacted**.
 - Fixtures live in `conftest.py`. No network in `unit/`, ever.
+- **Analytics engines are tested on real NSE data.** `fixture_source` is a slice of the
+  scraper database (12 instruments, full history, statements) shipped as
+  `fixtures/nse_fixture.sqlite3.gz` and rebuilt with `scripts/build_test_fixture.py`
+  (manifest in `fixtures/nse_fixture.json`). `@pytest.mark.realdata` tests use the live
+  `~/nse-stock-scraper` database via `live_source` and skip when it is absent. Assert on
+  hand-checked numbers (KCB FY2025 revenue 173,395 m KES), never on "it ran".
+- Every engine gets a look-ahead test: recompute `as_of=T` after adding rows after T
+  and assert identical output.
 
 ```bash
 uv run pytest -m unit          # fast loop

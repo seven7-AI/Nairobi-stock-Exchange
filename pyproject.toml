@@ -115,6 +115,7 @@ markers = [
     "unit: fast isolated tests with no external dependencies",
     "integration: tests that touch a database, Redis, or the network",
     "slow: long-running tests excluded from the default fast loop",
+    "realdata: assertions against the LIVE scraper database; skipped when it is absent",
 ]
 
 [tool.coverage.run]

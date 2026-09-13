@@ -50,6 +50,62 @@ def indicators_file(repo_root: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Real-data fixtures for the analytics engines
+# ---------------------------------------------------------------------------
+# ``fixture_source`` is a slice of the real scraper database (12 instruments, full
+# history, statements) shipped gzipped under app/tests/fixtures/ and rebuilt with
+# scripts/build_test_fixture.py. It runs everywhere. ``live_source`` is the actual
+# ~/nse-stock-scraper database and is only for @pytest.mark.realdata tests, which
+# skip when it is not on this machine.
+FIXTURE_DB_GZ = REPO_ROOT / "app" / "tests" / "fixtures" / "nse_fixture.sqlite3.gz"
+
+
+@pytest.fixture(scope="session")
+def fixture_db_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fixture database, decompressed once per session."""
+    import gzip
+    import shutil
+
+    target = tmp_path_factory.mktemp("nse_fixture") / "nse_scraper.sqlite3"
+    with gzip.open(FIXTURE_DB_GZ, "rb") as src, target.open("wb") as dst:
+        shutil.copyfileobj(src, dst)
+    return target
+
+
+@pytest.fixture(scope="session")
+def fixture_settings(fixture_db_path: Path, tmp_path_factory: pytest.TempPathFactory):
+    """Settings pointed at the fixture database and a throwaway analytics store."""
+    from app.web.config import Settings
+
+    analytics = tmp_path_factory.mktemp("analytics") / "nse_analytics.sqlite3"
+    return Settings(
+        NSE_SCRAPER_DB_PATH=str(fixture_db_path),
+        NSE_SCRAPER_PATH=str(fixture_db_path.parent),
+        ANALYTICS_DB_PATH=str(analytics),
+    )
+
+
+@pytest.fixture(scope="session")
+def fixture_source(fixture_settings):
+    """``NseScraperSource`` over the fixture database (read-only, like production)."""
+    from app.web.services.market_data.sources import NseScraperSource
+
+    return NseScraperSource(fixture_settings)
+
+
+@pytest.fixture(scope="session")
+def live_source():
+    """``NseScraperSource`` over the real scraper database, or skip."""
+    from app.web.config import Settings
+    from app.web.services.market_data.sources import NseScraperSource
+
+    settings = Settings()
+    if not settings.scraper_database_path.exists():
+        pytest.skip(f"live scraper database not found at {settings.scraper_database_path}")
+    return NseScraperSource(settings)
+
+
+# ---------------------------------------------------------------------------
 # Integration fixtures
 # ---------------------------------------------------------------------------
 requires_db = pytest.mark.skipif(

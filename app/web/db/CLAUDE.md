@@ -24,6 +24,24 @@ migration against a table this repo does not own.
   rules.** If a function decides *what a number means*, it belongs in
   `app/web/services/`, not here.
 
+## The analytics store — `analytics/`
+
+A **second** declarative base (`AnalyticsBase`) over a SQLite file
+(`Settings.analytics_db_path`), migrated by its own chain (`app/alembic_analytics/`,
+`uv run alembic -n analytics …`). It holds derived results only — metrics, factor scores,
+valuations, forecasts, backtests, `job_runs`, `calc_versions`, `model_registry`.
+
+- Integer keys (`IntIdMixin`), Python-side UTC timestamps (`CreatedAtMixin`), `JSON`
+  columns; no `UUIDMixin`/`TimestampMixin` here — those are Postgres-specific.
+- Never put an analytics model on `Base` or a platform model on `AnalyticsBase`.
+- Every result row carries `calc_version_id` and a `status` column (missing ≠ zero).
+- Sync sessions only (`analytics_session(settings)`); these are batch jobs.
+
+```bash
+codegraph explore "AnalyticsBase upgrade_analytics_db analytics_session"
+uv run alembic -n analytics revision --autogenerate -m "add market_metrics"
+```
+
 ## The table we do not own
 
 `stockanalysis_stocks` is written by an external scraper outside this repo.
