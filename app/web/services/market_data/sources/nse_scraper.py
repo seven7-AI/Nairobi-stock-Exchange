@@ -58,6 +58,11 @@ JSON_ARRAY_COLUMNS = ("price_history",)
 #: docs/CANONICAL_SCHEMA.md. Read-only here, like everything else in this source.
 OBSERVATIONS_TABLE = "stock_observations"
 INSTRUMENTS_TABLE = "instruments"
+#: Fundamentals, appended by the scraper since 2026-09-13 (scraper docs/CANONICAL_SCHEMA.md):
+#: statement line items keyed on the displayed value with a first-seen timestamp, and
+#: the daily per-view metric JSON that ``stockanalysis_stocks`` otherwise overwrites.
+FINANCIAL_STATEMENTS_TABLE = "financial_statements"
+FUNDAMENTAL_SNAPSHOTS_TABLE = "fundamental_snapshots"
 
 #: Spiders the scraper runs, and the table each one feeds.
 SPIDER_TABLES = {
@@ -245,6 +250,136 @@ class NseScraperSource:
             )
             records.append(record)
         logger.info("scraper_observations_fetched", ticker=params[0], rows=len(records))
+        return records
+
+    def fetch_observations_bulk(
+        self,
+        ticker_symbols: list[str],
+        *,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Observations for many instruments in one query, keyed by canonical ticker.
+
+        The engines compute a whole universe per run; one round trip per ticker would
+        be ~100 connections a day for nothing.
+        """
+        symbols = sorted({symbol.strip().upper() for symbol in ticker_symbols if symbol.strip()})
+        result: dict[str, list[dict[str, Any]]] = {symbol: [] for symbol in symbols}
+        if not symbols:
+            return result
+        clauses = [f"ticker_symbol IN ({','.join('?' * len(symbols))})"]
+        params: list[Any] = list(symbols)
+        if start is not None:
+            clauses.append("trade_date >= ?")
+            params.append(start.isoformat())
+        if end is not None:
+            clauses.append("trade_date <= ?")
+            params.append(end.isoformat())
+        with self._connect() as connection:
+            if not self._table_exists(connection, OBSERVATIONS_TABLE):
+                logger.warning("scraper_table_missing", table=OBSERVATIONS_TABLE)
+                return result
+            rows = connection.execute(
+                f"SELECT * FROM {OBSERVATIONS_TABLE} WHERE {' AND '.join(clauses)} "
+                "ORDER BY ticker_symbol ASC, trade_date ASC",
+                params,
+            ).fetchall()
+        for row in rows:
+            record = dict(row)
+            record["quality_flags"] = _decode_json_column(
+                record.get("quality_flags"), "quality_flags", record.get("ticker_symbol", "?"), []
+            )
+            result[record["ticker_symbol"]].append(record)
+        logger.info("scraper_observations_bulk_fetched", tickers=len(symbols), rows=len(rows))
+        return result
+
+    # -- fundamentals (point-in-time) ---------------------------------------
+    def has_financial_statements(self) -> bool:
+        with self._connect() as connection:
+            return self._table_exists(connection, FINANCIAL_STATEMENTS_TABLE)
+
+    def fetch_financial_statements(
+        self,
+        ticker_symbol: str,
+        *,
+        statement: str | None = None,
+        period_type: str | None = None,
+        first_seen_before: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Statement line items for one instrument, every version ever captured.
+
+        Rows are append-only in the scraper: a restated figure is a second row with a
+        later ``first_seen_at``. ``first_seen_before`` keeps only rows captured before
+        that moment - the raw ingredient of a point-in-time view; the publication-lag
+        rule that turns a backfilled capture into an availability date lives in
+        ``app/web/services/analytics/fundamentals``. Ordered by period end, then
+        first seen, so the newest version of a figure is last.
+        """
+        clauses = ["ticker_symbol = ?"]
+        params: list[Any] = [ticker_symbol.strip().upper()]
+        if statement is not None:
+            clauses.append("statement = ?")
+            params.append(statement)
+        if period_type is not None:
+            clauses.append("period_type = ?")
+            params.append(period_type)
+        if first_seen_before is not None:
+            clauses.append("first_seen_at <= ?")
+            params.append(first_seen_before.isoformat())
+        with self._connect() as connection:
+            if not self._table_exists(connection, FINANCIAL_STATEMENTS_TABLE):
+                logger.warning("scraper_table_missing", table=FINANCIAL_STATEMENTS_TABLE)
+                return []
+            rows = connection.execute(
+                f"SELECT * FROM {FINANCIAL_STATEMENTS_TABLE} WHERE {' AND '.join(clauses)} "
+                "ORDER BY fiscal_period_end ASC, statement ASC, line_item ASC, first_seen_at ASC",
+                params,
+            ).fetchall()
+        records = [dict(row) for row in rows]
+        logger.info("scraper_statements_fetched", ticker=params[0], rows=len(records))
+        return records
+
+    def fetch_fundamental_snapshots(
+        self,
+        ticker_symbol: str,
+        *,
+        view: str | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[dict[str, Any]]:
+        """Daily metric-view snapshots for one instrument, oldest first, JSON decoded.
+
+        ``end`` is the point-in-time bound: a snapshot dated after it did not exist yet.
+        """
+        clauses = ["ticker_symbol = ?"]
+        params: list[Any] = [ticker_symbol.strip().upper()]
+        if view is not None:
+            clauses.append("view = ?")
+            params.append(view)
+        if start is not None:
+            clauses.append("snapshot_date >= ?")
+            params.append(start.isoformat())
+        if end is not None:
+            clauses.append("snapshot_date <= ?")
+            params.append(end.isoformat())
+        with self._connect() as connection:
+            if not self._table_exists(connection, FUNDAMENTAL_SNAPSHOTS_TABLE):
+                logger.warning("scraper_table_missing", table=FUNDAMENTAL_SNAPSHOTS_TABLE)
+                return []
+            rows = connection.execute(
+                f"SELECT * FROM {FUNDAMENTAL_SNAPSHOTS_TABLE} WHERE {' AND '.join(clauses)} "
+                "ORDER BY snapshot_date ASC, view ASC",
+                params,
+            ).fetchall()
+        records = []
+        for row in rows:
+            record = dict(row)
+            record["metrics"] = _decode_json_column(
+                record.get("metrics"), "metrics", record.get("ticker_symbol", "?"), {}
+            )
+            records.append(record)
+        logger.info("scraper_snapshots_fetched", ticker=params[0], rows=len(records))
         return records
 
     def fetch_instruments(self, *, sector: str | None = None) -> list[dict[str, Any]]:

@@ -224,3 +224,19 @@ NSE Scraped Data
   same path — hence the setting and the Docker mount.
 - **History depth varies.** 56 of 64 tickers carry the ≥5 observations weekly needs and
   55 carry the ≥22 monthly needs. The rest are reported as `N/A`, never as `0.00%`.
+
+## Fundamentals (since 2026-09-13)
+
+The scraper also appends two point-in-time tables (its `docs/CANONICAL_SCHEMA.md`):
+
+| Table | Read through | Rule |
+|---|---|---|
+| `financial_statements` | `NseScraperSource.fetch_financial_statements(ticker, first_seen_before=…)` | one row per (statement, period, line item, **displayed value**) with `first_seen_at`; restatements append |
+| `fundamental_snapshots` | `NseScraperSource.fetch_fundamental_snapshots(ticker, end=…)` | the daily overview/dividends/price/profile metric JSON, one row per view per day |
+
+`app/web/services/analytics/fundamentals/statements.py` turns captures into
+availability dates: a figure captured live is available from its first-seen day; a
+figure first captured long after its period end (the FY2021–2025 backfill) is available
+from `period_end + publication_lag` (config: 90 d annual / 60 d interim) and its
+provenance says so. Values are scaled to base units there (`millions_kes` → KES,
+`percent` → fraction); a `-` on the site is a `MISSING` measure, never zero.

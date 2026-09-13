@@ -1,0 +1,30 @@
+{
+  "built_at": "2026-09-13T11:29:38+00:00",
+  "source": "/home/kevin/nse-stock-scraper/data/nse_scraper.sqlite3",
+  "source_sha256": "50ed7dbfe54f14ead1bdf15f681c95438c924be47285bccfb6e762c61a245a6d",
+  "fixture_sha256": "d8c7e22e9a44bea15b9e5c05616ebb9984b497edf97cddbdc8ab78c70cd93dc5",
+  "tickers": [
+    "KCB",
+    "EQTY",
+    "SCOM",
+    "KEGN",
+    "ABSA",
+    "NCBA",
+    "KENO",
+    "ACCS",
+    "KPC",
+    "SKL",
+    "^NASI",
+    "^N20I"
+  ],
+  "rows": {
+    "instruments": 12,
+    "instrument_aliases": 2,
+    "stock_observations": 39647,
+    "stock_observation_conflicts": 9,
+    "import_runs": 18,
+    "financial_statements": 10765,
+    "fundamental_snapshots": 20,
+    "stockanalysis_stocks": 8
+  }
+}
