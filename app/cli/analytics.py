@@ -62,4 +62,25 @@ def status() -> None:
         raise typer.Exit(code=1)
 
 
+@analytics_app.command("classify")
+def classify() -> None:
+    """Rebuild the point-in-time sector/industry classification of every instrument."""
+    from app.web.services.analytics.classification.service import classify_instruments
+    from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
+
+    settings = _settings()
+    source = build_market_data_source(settings)
+    if not isinstance(source, NseScraperSource):
+        raise typer.BadParameter("classify needs the nse_scraper source (instrument master).")
+    result = classify_instruments(settings, source)
+    console.print(
+        f"classifications rebuilt: {result.rows_written} rows for {result.tickers} instruments"
+    )
+    for line in result.skipped_rows:
+        console.print(f"  skipped sector-file row: {line}")
+    if result.unclassified:
+        console.print(f"  [red]unclassified: {', '.join(result.unclassified)}[/red]")
+        raise typer.Exit(code=1)
+
+
 __all__ = ["analytics_app"]

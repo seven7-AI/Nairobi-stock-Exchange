@@ -58,6 +58,7 @@ JSON_ARRAY_COLUMNS = ("price_history",)
 #: docs/CANONICAL_SCHEMA.md. Read-only here, like everything else in this source.
 OBSERVATIONS_TABLE = "stock_observations"
 INSTRUMENTS_TABLE = "instruments"
+ALIASES_TABLE = "instrument_aliases"
 #: Fundamentals, appended by the scraper since 2026-09-13 (scraper docs/CANONICAL_SCHEMA.md):
 #: statement line items keyed on the displayed value with a first-seen timestamp, and
 #: the daily per-view metric JSON that ``stockanalysis_stocks`` otherwise overwrites.
@@ -294,6 +295,24 @@ class NseScraperSource:
         logger.info("scraper_observations_bulk_fetched", tickers=len(symbols), rows=len(rows))
         return result
 
+    def fetch_observation_spans(self) -> dict[str, tuple[date, date, int]]:
+        """Per canonical ticker: first trade date, last trade date, observation count.
+
+        One query for the whole universe - the listing/delisting boundaries every
+        engine needs for point-in-time membership.
+        """
+        with self._connect() as connection:
+            if not self._table_exists(connection, OBSERVATIONS_TABLE):
+                return {}
+            rows = connection.execute(
+                f"SELECT ticker_symbol, MIN(trade_date), MAX(trade_date), COUNT(*) "
+                f"FROM {OBSERVATIONS_TABLE} GROUP BY ticker_symbol"
+            ).fetchall()
+        return {
+            row[0]: (date.fromisoformat(row[1]), date.fromisoformat(row[2]), int(row[3]))
+            for row in rows
+        }
+
     # -- fundamentals (point-in-time) ---------------------------------------
     def has_financial_statements(self) -> bool:
         with self._connect() as connection:
@@ -396,6 +415,16 @@ class NseScraperSource:
                     f"SELECT * FROM {INSTRUMENTS_TABLE} WHERE sector = ? ORDER BY ticker_symbol",
                     (sector,),
                 ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_instrument_aliases(self) -> list[dict[str, Any]]:
+        """Ticker lineage the scraper resolved (``BBK`` -> ``ABSA``), with its evidence."""
+        with self._connect() as connection:
+            if not self._table_exists(connection, ALIASES_TABLE):
+                return []
+            rows = connection.execute(
+                f"SELECT * FROM {ALIASES_TABLE} ORDER BY source_ticker"
+            ).fetchall()
         return [dict(row) for row in rows]
 
     # -- run artifacts ------------------------------------------------------
