@@ -13,11 +13,11 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Date, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.web.db.analytics.base import AnalyticsBase
-from app.web.db.analytics.models.mixins import IntIdMixin, utcnow
+from app.web.db.analytics.models.mixins import IntIdMixin, UTCDateTime, utcnow
 
 
 class JobStatus(StrEnum):
@@ -35,9 +35,9 @@ class JobRun(IntIdMixin, AnalyticsBase):
     job_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=JobStatus.RUNNING)
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+        UTCDateTime(), nullable=False, default=utcnow, index=True
     )
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     #: The date the job computed "as of" - the latest observation it was allowed to see.
     as_of_date: Mapped[date_type | None] = mapped_column(Date, nullable=True)
     #: Opaque marker of the newest input consumed (e.g. max trade_date), used to
