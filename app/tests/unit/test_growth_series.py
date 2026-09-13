@@ -1,6 +1,6 @@
 """The stock-growth series and chart, from synthetic observations. No I/O.
 
-codegraph explore "build_growth_series figure_for render_html"
+codegraph explore "build_growth_series figure_for render_png"
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from app.web.services.visualizations import (
     GAP_THRESHOLD_DAYS,
     build_growth_series,
     figure_for,
-    render_html,
+    render_png,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -73,12 +73,16 @@ def test_a_real_hole_is_a_gap_but_a_holiday_is_not() -> None:
 
 
 def test_figure_breaks_the_line_at_the_gap_and_never_connects() -> None:
+    import numpy as np
+
     rows = _rows([("2020-01-01", 10.0), ("2020-01-02", 10.5), ("2020-03-01", 11.0)])
     fig = figure_for(build_growth_series(rows, INSTRUMENT))
-    line = fig.data[0]
-    assert line.connectgaps is False
-    assert None in line.y  # the break inserted after the last point before the gap
-    assert len(fig.layout.shapes) == 1  # the shaded "no data" band
+    ax = fig.axes[0]
+    line = ax.get_lines()[0]  # the close series is drawn first
+    ys = np.asarray(line.get_ydata(), dtype=float)
+    assert int(np.isnan(ys).sum()) == 1  # the break inserted after the last point before the gap
+    assert len(ax.patches) == 1  # the shaded "no data" band (axvspan)
+    render_png(fig)
 
 
 def test_split_is_detected_not_smoothed() -> None:
@@ -91,6 +95,10 @@ def test_split_is_detected_not_smoothed() -> None:
     assert action.ratio == pytest.approx(22.5 / 212.0)
     assert series.summary()["prices_are_adjusted"] is False
     assert [p.close for p in series.points] == [227.0, 212.0, 22.5, 22.75]  # untouched
+    fig = figure_for(series)
+    dashed = [ln for ln in fig.axes[0].get_lines() if ln.get_linestyle() == "--"]
+    assert len(dashed) == 1  # one marker per suspected corporate action
+    render_png(fig)
 
 
 def test_a_step_across_a_gap_is_not_called_a_corporate_action() -> None:
@@ -106,7 +114,9 @@ def test_lineage_is_visible_in_source_tickers() -> None:
     )
     series = build_growth_series(rows, {**INSTRUMENT, "ticker_symbol": "ABSA"})
     assert series.source_tickers == ["BBK", "ABSA"]
-    assert "traded as BBK → ABSA" in figure_for(series).layout.title.text
+    fig = figure_for(series)
+    assert "traded as BBK → ABSA" in fig.axes[0].get_title(loc="left")
+    render_png(fig)
 
 
 def test_empty_series_is_an_error_not_a_blank_chart() -> None:
@@ -124,12 +134,12 @@ def test_unusable_rows_are_dropped_never_invented() -> None:
     assert [p.close for p in series.points] == [10.0, 12.0]
 
 
-def test_rendered_html_references_shared_plotlyjs_not_an_inline_blob() -> None:
-    rows = _daily(date(2020, 1, 1), [10.0, 11.0])
-    html = render_html(
-        figure_for(build_growth_series(rows, INSTRUMENT)),
-        include_plotlyjs="../assets/plotly.min.js",
-    )
-    assert "KCB" in html
-    assert 'src="../assets/plotly.min.js"' in html
-    assert len(html) < 200_000  # no 4 MB plotly inlined
+def test_render_png_produces_a_png_and_closes_the_figure() -> None:
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
+    rows = _daily(date(2020, 1, 1), [10.0, 11.0, 12.0])
+    png = render_png(figure_for(build_growth_series(rows, INSTRUMENT)))
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert 10_000 < len(png) < 2_000_000
+    assert plt.get_fignums() == []  # nothing left open for --all to accumulate

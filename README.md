@@ -122,8 +122,8 @@ Reports land in `reports/{daily,weekly,monthly}/`.
 
 ## Diagrams
 
-`diagrams/stock-growth/<TICKER>.html` — one interactive chart per instrument, 2007 →
-latest scrape, drawn from the canonical timeline. Gaps are gaps; prices are unadjusted
+`diagrams/stock-growth/<TICKER>.png` — one chart per instrument, 2007 → latest scrape,
+drawn from the canonical timeline. Static matplotlib images; they render on GitHub. Gaps are gaps; prices are unadjusted
 and suspected splits are marked. See [diagrams/README.md](diagrams/README.md).
 
 ```bash

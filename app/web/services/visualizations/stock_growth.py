@@ -2,40 +2,48 @@
 
 ``load_growth_series`` is the only I/O in this module and goes through
 ``NseScraperSource`` — the same read path everything else uses. ``figure_for`` and
-``render_html`` are pure. ``write_diagram`` puts the result under
-``diagrams/stock-growth/<TICKER>.html`` with ``plotly.min.js`` written once into
-``diagrams/assets/`` so every chart is small and works offline.
+``render_png`` are pure. ``write_diagram`` puts a static PNG under
+``diagrams/stock-growth/<TICKER>.png``: it renders on GitHub, needs no JavaScript, and
+is a fraction of the size of the interactive HTML it replaced.
 
     codegraph explore "figure_for write_diagram load_growth_series plot_stock read_growth"
 """
 
 from __future__ import annotations
 
+import io
+import math
 from pathlib import Path
-from typing import Any
 
-import plotly.graph_objects as go
-import plotly.io as pio
-from plotly.offline import get_plotlyjs
+import matplotlib
+
+matplotlib.use("Agg")  # headless; must precede the pyplot import
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from app.web.core.exceptions import ResourceNotFoundError
 from app.web.services.market_data.sources.nse_scraper import NseScraperSource
-from app.web.services.visualizations.growth_series import StockGrowthSeries, build_growth_series
+from app.web.services.visualizations.growth_series import (
+    StockGrowthSeries,
+    build_growth_series,
+)
 from app.web.utils.logger import get_logger
 
 logger = get_logger("app.web.services.visualizations.stock_growth")
 
 DIAGRAM_KIND = "stock-growth"
-ASSETS_DIR_NAME = "assets"
+DEFAULT_DPI = 140
+FIGSIZE = (14, 6.2)
 
 LINE_COLOUR = "#1f5fbf"
-GAP_COLOUR = "rgba(200, 60, 60, 0.10)"
-GAP_LINE_COLOUR = "rgba(200, 60, 60, 0.55)"
+GAP_FILL = (0.78, 0.24, 0.24, 0.10)
+GAP_EDGE = (0.78, 0.24, 0.24, 0.55)
 ACTION_COLOUR = "#8a6d00"
-HOVER_TEMPLATE = (
-    "%{x|%Y-%m-%d}<br>close %{y:,.2f}<br>%{customdata[0]} · %{customdata[1]}<extra></extra>"
-)
 MARKER_COLOURS = {"first": "#2b8a3e", "last": "#1f5fbf", "high": "#d9480f", "low": "#862e9c"}
+MARKER_OFFSETS = {"first": (8, -14), "last": (-8, 10), "high": (0, 12), "low": (0, -16)}
+MARKER_ALIGN = {"first": "left", "last": "right", "high": "center", "low": "center"}
 
 
 # -- data ------------------------------------------------------------------------------
@@ -54,88 +62,77 @@ def load_growth_series(source: NseScraperSource, ticker_symbol: str) -> StockGro
 
 
 # -- figure ----------------------------------------------------------------------------
-def figure_for(series: StockGrowthSeries) -> go.Figure:
+def figure_for(series: StockGrowthSeries) -> Figure:
     """A single-line time series with gaps broken and the key points annotated."""
-    xs: list[Any] = []
-    ys: list[float | None] = []
-    custom: list[list[str]] = []
+    # matplotlib's date axis is float days; convert once so every artist agrees.
+    day = mdates.date2num
+    xs: list[float] = []
+    ys: list[float] = []
     gap_starts = {g.after for g in series.gaps}
     for point in series.points:
-        xs.append(point.trade_date)
+        xs.append(day(point.trade_date))
         ys.append(point.close)
-        custom.append([point.data_source, point.source_ticker])
         if point.trade_date in gap_starts:
-            # A None breaks the line: plotly draws nothing across the gap.
-            xs.append(point.trade_date)
-            ys.append(None)
-            custom.append(["", ""])
+            # A NaN breaks the line: matplotlib never draws across it.
+            xs.append(day(point.trade_date))
+            ys.append(math.nan)
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys,
-            mode="lines",
-            name="close (unadjusted)",
-            line={"color": LINE_COLOUR, "width": 1.4},
-            connectgaps=False,
-            customdata=custom,
-            # Rendered client-side from x/y/customdata, so the file carries no
-            # per-point strings - ~5x smaller than prebuilt hover text.
-            hovertemplate=HOVER_TEMPLATE,
-        )
-    )
-
-    for action in series.corporate_actions:
-        fig.add_vline(
-            x=action.on.isoformat(),
-            line={"width": 1, "color": ACTION_COLOUR, "dash": "dash"},
-            annotation_text=f"x{action.ratio:.2f} step: suspected corporate action (unadjusted)",
-            annotation_position="top right",
-            annotation_font={"size": 9, "color": ACTION_COLOUR},
-        )
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(xs, ys, color=LINE_COLOUR, linewidth=1.1)
 
     for gap in series.gaps:
-        fig.add_vrect(
-            x0=gap.after,
-            x1=gap.before,
-            fillcolor=GAP_COLOUR,
-            line={"width": 1, "color": GAP_LINE_COLOUR, "dash": "dot"},
-            layer="below",
-            annotation_text=f"no data · {gap.days} days",
-            annotation_position="top left",
-            annotation_font={"size": 10, "color": "#a33"},
+        ax.axvspan(
+            day(gap.after), day(gap.before), facecolor=GAP_FILL, edgecolor=GAP_EDGE, linestyle=":"
+        )
+        ax.annotate(
+            f"no data · {gap.days} days",
+            xy=(day(gap.after), 1.0),
+            xycoords=("data", "axes fraction"),
+            xytext=(6, -12),
+            textcoords="offset points",
+            fontsize=8.5,
+            color="#a33",
+            va="top",
         )
 
-    for label, point, position in (
-        ("first", series.first, "bottom right"),
-        ("last", series.last, "top left"),
-        ("high", series.high, "top center"),
-        ("low", series.low, "bottom center"),
+    for action in series.corporate_actions:
+        ax.axvline(day(action.on), color=ACTION_COLOUR, linewidth=1, linestyle="--")
+        ax.annotate(
+            f"x{action.ratio:.2f} step: suspected corporate action (unadjusted)",
+            xy=(day(action.on), 0.03),
+            xycoords=("data", "axes fraction"),
+            xytext=(4, 0),
+            textcoords="offset points",
+            fontsize=7.5,
+            color=ACTION_COLOUR,
+            rotation=90,
+            va="bottom",
+        )
+
+    for label, point in (
+        ("first", series.first),
+        ("last", series.last),
+        ("high", series.high),
+        ("low", series.low),
     ):
-        fig.add_trace(
-            go.Scatter(
-                x=[point.trade_date],
-                y=[point.close],
-                mode="markers+text",
-                name=label,
-                marker={"size": 9, "color": MARKER_COLOURS[label]},
-                text=[f"{label}: {point.close:,.2f}"],
-                textposition=position,
-                textfont={"size": 10, "color": MARKER_COLOURS[label]},
-                hovertext=[f"{label} · {point.trade_date.isoformat()} · {point.close:,.2f}"],
-                hoverinfo="text",
-                showlegend=False,
-            )
+        colour = MARKER_COLOURS[label]
+        ax.plot(day(point.trade_date), point.close, "o", color=colour, markersize=6, zorder=5)
+        ax.annotate(
+            f"{label}: {point.close:,.2f}\n{point.trade_date.isoformat()}",
+            xy=(day(point.trade_date), point.close),
+            xytext=MARKER_OFFSETS[label],
+            textcoords="offset points",
+            fontsize=8,
+            color=colour,
+            ha=MARKER_ALIGN[label],
+            va="center",
         )
 
     change = series.overall_change_pct
     sign = "+" if change >= 0 else ""
-    lineage = (
-        f" · traded as {' → '.join(series.source_tickers)}"
-        if len(series.source_tickers) > 1
-        else ""
-    )
+    lineage = ""
+    if len(series.source_tickers) > 1:
+        lineage = f" · traded as {' → '.join(series.source_tickers)}"
     subtitle = (
         f"{series.first.trade_date.isoformat()} → {series.last.trade_date.isoformat()} · "
         f"{len(series.points):,} observations · {sign}{change:.1f}% overall · "
@@ -146,40 +143,40 @@ def figure_for(series: StockGrowthSeries) -> go.Figure:
             f" · {len(series.corporate_actions)} suspected corporate action(s), prices unadjusted"
         )
     sector = f" · {series.sector}" if series.sector else ""
-    title_text = f"{series.ticker_symbol} — {series.company_name}{sector}<br><sup>{subtitle}</sup>"
-    fig.update_layout(
-        title={"text": title_text},
-        xaxis={"title": "trade date", "dtick": "M12", "tickformat": "%Y", "showgrid": True},
-        yaxis={"title": "close, KES (unadjusted)", "rangemode": "tozero"},
-        template="plotly_white",
-        hovermode="x unified",
-        margin={"l": 60, "r": 30, "t": 90, "b": 60},
-        height=520,
+    fig.suptitle(
+        f"{series.ticker_symbol} — {series.company_name}{sector}", fontsize=14, x=0.01, ha="left"
     )
+    ax.set_title(subtitle, fontsize=9, color="#555", loc="left")
+
+    ax.set_xlabel("trade date")
+    ax.set_ylabel("close, KES (unadjusted)")
+    ax.set_ylim(bottom=0)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax.grid(True, alpha=0.25)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout(rect=(0, 0, 1, 0.965))
     return fig
 
 
 # -- output ----------------------------------------------------------------------------
-def render_html(fig: go.Figure, *, include_plotlyjs: str | bool = "cdn") -> str:
-    """Standalone HTML. ``"cdn"`` for a served page; a path string for a written file."""
-    return pio.to_html(fig, include_plotlyjs=include_plotlyjs, full_html=True)
+def render_png(fig: Figure, *, dpi: int = DEFAULT_DPI) -> bytes:
+    """PNG bytes. Closes the figure afterwards so ``--all`` does not hold 100+ open."""
+    buffer = io.BytesIO()
+    try:
+        fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight")
+    finally:
+        plt.close(fig)
+    return buffer.getvalue()
 
 
 def write_diagram(series: StockGrowthSeries, diagrams_dir: Path) -> Path:
-    """Write ``diagrams/stock-growth/<TICKER>.html``, sharing one ``assets/plotly.min.js``."""
+    """Write ``diagrams/stock-growth/<TICKER>.png``."""
     kind_dir = diagrams_dir / DIAGRAM_KIND
-    assets_dir = diagrams_dir / ASSETS_DIR_NAME
     kind_dir.mkdir(parents=True, exist_ok=True)
-    assets_dir.mkdir(parents=True, exist_ok=True)
-
-    plotly_js = assets_dir / "plotly.min.js"
-    if not plotly_js.exists():
-        plotly_js.write_text(get_plotlyjs(), encoding="utf-8")
-
-    fig = figure_for(series)
-    html = render_html(fig, include_plotlyjs=f"../{ASSETS_DIR_NAME}/plotly.min.js")
-    out = kind_dir / f"{series.ticker_symbol}.html"
-    out.write_text(html, encoding="utf-8")
+    out = kind_dir / f"{series.ticker_symbol}.png"
+    out.write_bytes(render_png(figure_for(series)))
     logger.info(
         "diagram_written",
         kind=DIAGRAM_KIND,
@@ -191,4 +188,4 @@ def write_diagram(series: StockGrowthSeries, diagrams_dir: Path) -> Path:
     return out
 
 
-__all__ = ["DIAGRAM_KIND", "figure_for", "load_growth_series", "render_html", "write_diagram"]
+__all__ = ["DIAGRAM_KIND", "figure_for", "load_growth_series", "render_png", "write_diagram"]

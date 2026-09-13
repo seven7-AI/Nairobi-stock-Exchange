@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 
 from app.web.api.deps import CurrentUser, MarketDataSourceDep, SessionDep
 from app.web.api.pagination import Cursor, CursorPage, PageSize, decode_cursor
@@ -104,22 +104,22 @@ async def read_scraped_rows(
     )
 
 
-@router.get("/{ticker_symbol}/growth", response_class=HTMLResponse)
+@router.get("/{ticker_symbol}/growth", response_class=Response)
 async def read_growth_chart(
     ticker_symbol: str, source: MarketDataSourceDep, current_user: CurrentUser = MarketUser
-) -> HTMLResponse:
-    """The stock-growth chart (2007 → latest scrape) as a standalone HTML page.
+) -> Response:
+    """The stock-growth chart (2007 → latest scrape) as a PNG.
 
     Same figure `nse-analysis plot-stock` writes to diagrams/stock-growth/, built
     from the same canonical timeline. Gaps are gaps; prices are unadjusted and
     suspected corporate actions are marked.
     """
-    from app.web.services.visualizations import figure_for, load_growth_series, render_html
+    from app.web.services.visualizations import figure_for, load_growth_series, render_png
 
     if not isinstance(source, NseScraperSource):
         raise ResourceNotFoundError("Growth charts need the canonical timeline source.")
     series = load_growth_series(source, ticker_symbol)  # raises ResourceNotFoundError -> 404
-    return HTMLResponse(render_html(figure_for(series), include_plotlyjs="cdn"))
+    return Response(content=render_png(figure_for(series)), media_type="image/png")
 
 
 @router.get("/{ticker_symbol}/quote", response_model=QuoteRead)

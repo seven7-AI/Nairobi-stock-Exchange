@@ -168,7 +168,7 @@ source.fetch_observations("KCB", start=date(2020, 1, 1))
 source.fetch_instruments(sector="Banking")
 ```
 
-**Visualized:** `diagrams/stock-growth/<TICKER>.html` and
+**Visualized:** `diagrams/stock-growth/<TICKER>.png` and
 `GET /api/v1/market-data/{ticker}/growth` draw this timeline — gaps as gaps, prices
 unadjusted with suspected splits marked. See `diagrams/README.md`.
 

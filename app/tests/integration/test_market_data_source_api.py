@@ -217,15 +217,14 @@ def timeline_scraper(fake_scraper: Path) -> Path:
     return fake_scraper
 
 
-async def test_growth_chart_is_served_as_html(
+async def test_growth_chart_is_served_as_png(
     timeline_scraper: Path, client: AsyncClient, token_for_role
 ) -> None:
     actor = await token_for_role("analyst")
     response = await client.get(GROWTH_URL.format(ticker="kcb"), headers=actor["headers"])
     assert response.status_code == 200, response.text[:300]
-    assert response.headers["content-type"].startswith("text/html")
-    assert "KCB Group Plc" in response.text
-    assert "plotly" in response.text.lower()
+    assert response.headers["content-type"] == "image/png"
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 async def test_growth_chart_unknown_ticker_is_404(

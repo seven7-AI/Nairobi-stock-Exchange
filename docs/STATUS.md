@@ -108,3 +108,24 @@ references it relatively and is ~200 KB, so the folder works offline and stays s
 
 **Tests.** 9 unit tests on the pure series/figure (gaps vs holidays, split detection,
 lineage, empty/unusable rows, no inlined JS) and 3 API tests (200 HTML, 404, 403/401).
+
+
+---
+
+## Visualizations — switched to matplotlib PNG  ✅ 2026-09-13
+
+The plotly HTML charts (102 × ~200 KB + a 4.2 MB `plotly.min.js`) are replaced by static
+matplotlib PNGs at 140 dpi, ~100–150 KB each, no JavaScript. They render inline on GitHub
+and in any viewer; interactivity (hover/zoom) is dropped by choice. `plotly` is removed
+from the dependencies; `matplotlib` was already one.
+
+Nothing about the data or its honesty rules changed — `growth_series.py` is untouched.
+The renderer draws the same things: a `NaN` breaks the line at each gap (matplotlib never
+draws across it), `axvspan` shades the gap with "no data · N days", `axvline` marks each
+suspected corporate action with its ratio and "unadjusted", first/last/high/low carry
+their dates, and lineage (`traded as BBK → ABSA`) sits in the subtitle. The figure is
+closed after rendering so `--all` does not accumulate 102 open figures.
+
+`GET /api/v1/market-data/{ticker}/growth` now returns `image/png`. CLI unchanged.
+Tests updated (NaN break + one span patch; one dashed line per corporate action; PNG
+magic bytes and no leaked figures; API `image/png`). Reviewed `KCB.png` visually.

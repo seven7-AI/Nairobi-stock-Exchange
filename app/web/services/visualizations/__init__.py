@@ -19,7 +19,7 @@ from app.web.services.visualizations.stock_growth import (
     DIAGRAM_KIND,
     figure_for,
     load_growth_series,
-    render_html,
+    render_png,
     write_diagram,
 )
 
@@ -32,6 +32,6 @@ __all__ = [
     "build_growth_series",
     "figure_for",
     "load_growth_series",
-    "render_html",
+    "render_png",
     "write_diagram",
 ]
