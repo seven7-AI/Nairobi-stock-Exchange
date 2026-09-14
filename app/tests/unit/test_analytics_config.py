@@ -5,6 +5,7 @@ codegraph explore "AnalyticsConfig register_calc_version CalcVersion"
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -59,7 +60,8 @@ def test_config_is_frozen_and_validated() -> None:
 
 def test_canonical_json_sorts_keys() -> None:
     text = DEFAULT_CONFIG.canonical_json()
-    assert text.startswith('{"fundamentals":{')
+    keys = list(json.loads(text))
+    assert keys == sorted(keys) and "factors" in keys and "fundamentals" in keys
     assert " " not in text
 
 

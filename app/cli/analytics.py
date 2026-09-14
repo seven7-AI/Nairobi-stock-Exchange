@@ -250,4 +250,22 @@ def compute_valuation_metrics_command(
     )
 
 
+@compute_app.command("factors")
+def compute_factors_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+) -> None:
+    """Factor z-scores and market/sector/industry percentiles from the stored metrics."""
+    from app.web.services.analytics.factors import compute_factors
+
+    settings = _settings()
+    result = compute_factors(settings, as_of=_parse_day(as_of))
+    table = Table(title=f"factors as of {result.as_of} (calc version {result.calc_version_id})")
+    table.add_column("Factor")
+    table.add_column("Known / universe", justify="right")
+    for factor, count in sorted(result.known_counts.items()):
+        table.add_row(factor, f"{count} / {len(result.universe)}")
+    console.print(table)
+    console.print(f"rows written {result.rows_written} · universe {len(result.universe)}")
+
+
 __all__ = ["analytics_app"]

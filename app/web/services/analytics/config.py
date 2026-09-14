@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -160,6 +160,118 @@ class ValuationConfig(BaseModel):
     min_peers: int = Field(default=3, ge=1)
 
 
+class FactorInput(BaseModel):
+    """One metric feeding a factor: where it lives, which way is better, how much it counts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    metric: str
+    source: Literal["market", "fundamental"]
+    #: +1 when a higher value is better, -1 when lower is better.
+    direction: Literal[1, -1] = 1
+    weight: float = Field(default=1.0, gt=0.0)
+
+
+class FactorDefinition(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    inputs: tuple[FactorInput, ...]
+
+
+def _default_factors() -> tuple[FactorDefinition, ...]:
+    m, f = "market", "fundamental"
+    return (
+        FactorDefinition(
+            name="value",
+            inputs=(
+                FactorInput(metric="pe", source=f, direction=-1),
+                FactorInput(metric="pb", source=f, direction=-1),
+                FactorInput(metric="ps", source=f, direction=-1, weight=0.5),
+                FactorInput(metric="ev_ebitda", source=f, direction=-1, weight=0.5),
+                FactorInput(metric="fcf_yield", source=f, direction=1, weight=0.5),
+                FactorInput(metric="dividend_yield", source=f, direction=1, weight=0.5),
+            ),
+        ),
+        FactorDefinition(
+            name="quality",
+            inputs=(
+                FactorInput(metric="roe", source=f),
+                FactorInput(metric="roa", source=f, weight=0.5),
+                FactorInput(metric="net_margin", source=f),
+                FactorInput(metric="operating_margin", source=f, weight=0.5),
+                FactorInput(metric="fcf_margin", source=f, weight=0.5),
+                FactorInput(metric="debt_to_equity", source=f, direction=-1, weight=0.5),
+                FactorInput(metric="roe_trend", source=f, weight=0.5),
+            ),
+        ),
+        FactorDefinition(
+            name="growth",
+            inputs=(
+                FactorInput(metric="revenue_growth_1y", source=f),
+                FactorInput(metric="eps_growth_1y", source=f),
+                FactorInput(metric="revenue_cagr_3y", source=f),
+                FactorInput(metric="eps_cagr_3y", source=f),
+                FactorInput(metric="fcf_growth_1y", source=f, weight=0.5),
+            ),
+        ),
+        FactorDefinition(
+            name="momentum",
+            inputs=(
+                FactorInput(metric="momentum_12m_1m", source=m),
+                FactorInput(metric="momentum_6m", source=m, weight=0.5),
+                FactorInput(metric="relative_12m_vs_market", source=m),
+                FactorInput(metric="trend_strength_6m", source=m, weight=0.5),
+                FactorInput(metric="price_to_ma_200", source=m, weight=0.5),
+                FactorInput(metric="distance_from_52w_high", source=m, weight=0.5),
+            ),
+        ),
+        FactorDefinition(
+            name="dividend",
+            inputs=(
+                FactorInput(metric="dividend_yield", source=f),
+                FactorInput(metric="dividend_consistency", source=f),
+                FactorInput(metric="dividend_cagr_3y", source=f, weight=0.5),
+                FactorInput(metric="fcf_dividend_coverage", source=f, weight=0.5),
+                FactorInput(metric="dividend_class", source=f, weight=0.5),
+            ),
+        ),
+        FactorDefinition(
+            name="risk",
+            inputs=(
+                FactorInput(metric="volatility_annualised", source=m, direction=-1),
+                FactorInput(metric="max_drawdown_36m", source=m, direction=1),
+                FactorInput(metric="beta_12m", source=m, direction=-1, weight=0.5),
+                FactorInput(metric="sharpe_12m", source=m, direction=1),
+            ),
+        ),
+        FactorDefinition(
+            name="liquidity",
+            inputs=(
+                FactorInput(metric="liquidity_score", source=m),
+                FactorInput(metric="avg_daily_turnover", source=m, weight=0.5),
+                FactorInput(metric="trading_frequency", source=m, weight=0.5),
+                FactorInput(metric="zero_volume_share", source=m, direction=-1, weight=0.5),
+            ),
+        ),
+    )
+
+
+class FactorConfig(BaseModel):
+    """Factor definitions and cross-sectional normalisation (``analytics/factors``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    factors: tuple[FactorDefinition, ...] = Field(default_factory=_default_factors)
+    #: Winsorisation quantiles applied to every input across the universe.
+    winsor_lower: float = Field(default=0.05, ge=0.0, le=0.5)
+    winsor_upper: float = Field(default=0.95, ge=0.5, le=1.0)
+    #: Share of a factor's input weight that must be known for the factor to be scored.
+    min_coverage: float = Field(default=0.5, gt=0.0, le=1.0)
+    #: Members needed before a within-group percentile is reported.
+    min_group_size: int = Field(default=3, ge=2)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -173,6 +285,7 @@ class AnalyticsConfig(BaseModel):
     risk: RiskConfig = Field(default_factory=RiskConfig)
     liquidity: LiquidityConfig = Field(default_factory=LiquidityConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
+    factors: FactorConfig = Field(default_factory=FactorConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -219,6 +332,9 @@ __all__ = [
     "DEFAULT_CONFIG",
     "AnalyticsConfig",
     "DataQualityConfig",
+    "FactorConfig",
+    "FactorDefinition",
+    "FactorInput",
     "FundamentalsConfig",
     "LiquidityConfig",
     "MarketConfig",
