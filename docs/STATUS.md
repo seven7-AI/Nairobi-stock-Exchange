@@ -521,3 +521,50 @@ vs trap (payout > 100 % / falling EPS), FCF-coverage edge cases (nothing paid
 `not_meaningful`, negative FCF stays negative), bank `not_applicable` rules, **real KCB**
 (P/E 4.52 = 94.0 / 20.8, P/B 0.91 = 302.07 bn / 331.47 bn, yield 5.3 %, payout 24 %),
 the job (cross-sectional medians), CLI.
+
+## #12 Factor engine  ✅ 2026-09-14
+
+`services/analytics/factors/engine.py` — cross-sectional factor scores from the metric
+rows already stored for the date (`market_metrics` + `fundamental_metrics`, newest
+computation wins). The universe is every instrument classified in an **operating
+sector** on the date (indices, ETFs and REITs excluded). Per input: winsorise at the
+5th/95th percentiles, z-score, flip the sign for "lower is better"; a factor's raw score
+is the weight-averaged z of the inputs that are *known*, `coverage` is the share of
+input weight known, and coverage below 50 % makes the factor `unavailable` rather than a
+score built on one number. Percentile ranks (0–100) within industry, sector and market;
+a group smaller than 3 yields no rank at that level.
+
+Factor definitions live in `AnalyticsConfig.factors` (`FactorDefinition` /
+`FactorInput(metric, source, direction, weight)`) and are part of the calc-version hash:
+
+| factor | inputs (− = lower is better; ½ = half weight) |
+|---|---|
+| value | −pe, −pb, −ps½, −ev_ebitda½, fcf_yield½, dividend_yield½ |
+| quality | roe, roa½, net_margin, operating_margin½, fcf_margin½, −debt_to_equity½, roe_trend½ |
+| growth | revenue_growth_1y, eps_growth_1y, revenue_cagr_3y, eps_cagr_3y, fcf_growth_1y½ |
+| momentum | momentum_12m_1m, momentum_6m½, relative_12m_vs_market, trend_strength_6m½, price_to_ma_200½, distance_from_52w_high½ |
+| dividend | dividend_yield, dividend_consistency, dividend_cagr_3y½, fcf_dividend_coverage½, dividend_class½ |
+| risk | −volatility_annualised, max_drawdown_36m (less negative is better), −beta_12m½, sharpe_12m |
+| liquidity | liquidity_score, avg_daily_turnover½, trading_frequency½, −zero_volume_share½ |
+
+`factor_scores` (Alembic `20260914_0007`) stores score, status, coverage, the three
+percentiles, group sizes and the per-input breakdown (value, z, weight, status).
+`nse-analysis analytics compute factors`.
+
+**Live**: `--as-of 2024-12-31` — universe 85, 595 rows; momentum and risk known for 64,
+liquidity 54, the fundamental factors for the 8 with statements known on the date;
+momentum leaders ORCH, KPLC, IMH, PORT, KCB (P94, banking P92), SCBK, KEGN. `--as-of
+2026-09-13` — universe 89, 623 rows; only value/quality/growth/dividend known (8/8/8/7):
+every market-side input (12-1 momentum, 6M momentum, annualised volatility, liquidity
+score) is `unavailable` across the 2025 gap or the seven-week scraper era, so the
+market factors are honestly absent rather than computed on a stub.
+
+Tests (9): winsorised z-scores (clipping, centring, < 3 values → 0, no dispersion → 0),
+direction and weights (low P/E scores high), the coverage rule (33 % → `unavailable`
+with the reason, a stricter minimum as configuration), group ranks and the minimum group
+size, every factor reported for every ticker with group sizes; on the real fixture
+(2024-12-31): the metric table only carries known values (delisted KENO excluded),
+`compute_factors` universe = the eight operating-sector instruments listed on the date,
+KCB momentum known with a banking percentile, KCB quality with no sector percentile
+(only two banks have statements), one calc version, idempotent re-run, a changed factor
+definition is a new calc version with both sets of rows kept, CLI.
