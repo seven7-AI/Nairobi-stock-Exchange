@@ -399,3 +399,36 @@ higher risk-free rate lowering it, always-rising series has no downside deviatio
 correlation 0.380 vs `^NASI`; `^NASI` 2008-06-09 → 2009-03-09 drawdown −56.27 %;
 post-gap `as_of` unavailable naming the gap; look-ahead; the job writes metrics and the
 matrix idempotently; a changed risk-free rate keeps both versions; CLI.
+
+## #9 Liquidity engine and liquidity score  ✅ 2026-09-14
+
+`services/analytics/liquidity/engine.py`, over the 6M in-segment window:
+`avg_daily_volume`, `avg_daily_turnover` (close × volume, KES), `trading_frequency`
+(observations / business days), `zero_volume_days`, `zero_volume_share`, `volume_cv`,
+`turnover_cv`, `market_cap` (latest `fundamental_snapshots` overview on/before the
+date — from 2026-09-13 only), `free_float` (`unavailable`: no source). A volume that is
+not reported is **not** zero: fewer than 20 reported volumes in the window →
+`unavailable` with the count, which is the scraper era for all but the rotating
+enrichment slice.
+
+`liquidity_score` (0–100) is cross-sectional: percentile ranks (ties take the top rank,
+so every stock trading daily is at the top for frequency) of turnover 50 %, frequency
+20 %, non-zero-volume share 20 %, steadiness 10 % (`AnalyticsConfig.liquidity`), mapped
+to Highly liquid ≥ 80 / Liquid ≥ 60 / Moderately liquid ≥ 40 / Illiquid ≥ 20 / Very
+illiquid (`liquidity_bucket` stores 5…1 with the label as the reason). Instruments with
+no volume data get `unavailable`, never a low score. `nse-analysis analytics compute
+liquidity`.
+
+**Live** (`--as-of 2024-12-31`): 102 instruments, 1,122 rows; 54 scored (the rest
+have no volume in the window — indices, delisted, or the archive's sparse-volume tail):
+SCOM 99.3, KCB 95.9, EQTY 94.4, COOP 91.3, KPLC 90.9, EABL 90.2 (16 Highly liquid, 24
+Liquid, 14 Moderately liquid); thinnest scored XPRS 43.3, OCH 45.9.
+
+Tests (14): steady stock, missing volume unavailable (not zero) with the count, zero
+days and thin trading frequency, gap-crossing window, point-in-time market cap,
+cross-sectional ranking with the silent instrument unavailable, bucket bounds
+(config), weights and window as configuration; **hand-checked KCB / SCOM H2-2024**
+(ADV 920,560 / 7,109,197 shares; KCB turnover KES 32.0 m; no zero days), the scraper
+era (prices but no volume; the 6M window crossing the gap), KCB market cap from the
+2026-09-13 snapshot (KES 302.07 bn), look-ahead, the job scoring the universe with SCOM
+≥ KCB and Highly liquid, CLI.
