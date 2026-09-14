@@ -221,4 +221,18 @@ def compute_liquidity_command(
     )
 
 
+@compute_app.command("fundamentals")
+def compute_fundamentals_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Fundamentals: ROE/ROA/margins/cash flow/leverage, trends, growth and CAGRs."""
+    from app.web.services.analytics.fundamentals import compute_fundamentals
+
+    settings, source = _scraper_source()
+    _print_compute(
+        compute_fundamentals(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    )
+
+
 __all__ = ["analytics_app"]

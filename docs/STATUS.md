@@ -432,3 +432,49 @@ cross-sectional ranking with the silent instrument unavailable, bucket bounds
 era (prices but no volume; the 6M window crossing the gap), KCB market cap from the
 2026-09-13 snapshot (KES 302.07 bn), look-ahead, the job scoring the universe with SCOM
 ≥ KCB and Highly liquid, CLI.
+
+## #10 Fundamental quality and growth engine  ✅ 2026-09-14
+
+`services/analytics/fundamentals/engine.py`, point-in-time from the statements known
+on the date (`statements.py` availability rules), by **concept** rather than label
+(banks print `diluted_shares_outstanding`, industrials `shares_outstanding_diluted`;
+`net_income_to_common` before `net_income`; a label present but all `-` falls through
+to the next):
+
+- quality for the latest fiscal year — `roe` and `roa` on the average of the year's and
+  the prior year's balance sheet, `net_margin`, `gross_margin`, `operating_margin`,
+  `ebitda_margin`, `fcf`, `ocf`, `fcf_margin`, `total_debt`, `net_debt`,
+  `debt_to_equity`, `interest_coverage` (operating income over |interest expense|),
+  `asset_turnover`; for banks and insurers the gross/operating/EBITDA margins, interest
+  coverage and asset turnover are `not_applicable`; negative earnings and negative FCF
+  stay negative; negative equity makes leverage `not_meaningful`;
+- trends — `roe_trend`, `roa_trend`, `net_margin_trend`, `operating_margin_trend`,
+  `gross_margin_trend`, `fcf_trend`, `debt_to_equity_trend` (rising leverage is
+  deteriorating): least-squares slope over ≥ 3 fiscal years relative to the mean level,
+  ±5 % per year is stable; stored as +1 / 0 / −1 with the label and slope in the reason;
+- growth — `revenue/eps/net_income/fcf/dividend_growth_1y`, `*_cagr_3y`, `*_cagr_5y`
+  (`unavailable` until six fiscal years exist; `not_meaningful` across a sign change);
+- sector-relative growth (`*_vs_sector`, own minus the sector median, ≥ 3 peers).
+
+`fundamental_metrics` (Alembic `20260914_0006`) carries the fiscal period each value
+describes. `nse-analysis analytics compute fundamentals`.
+
+**Live** (`--as-of 2026-09-13`, statements now captured for 10 tickers by the
+scraper's rotation): ROE SCOM 50.5 %, BAT 33.6 %, EQTY 26.5 %, KCB 22.0 %, SBIC 17.6 %,
+BRIT 17.2 %, DTK 10.3 %, KEGN 3.6 %; ROE trends BRIT/KEGN/SBIC/DTK improving, KCB/EQTY/SCOM
+stable, BAT deteriorating; 3-y revenue CAGR BRIT 28 %, EQTY 16 %, KCB 14 %, BAT −5 %.
+Sector-relative growth known for the 4 banks.
+
+Tests (19): hand-computed quality metrics on a synthetic industrial, bank rules,
+negative earnings / negative FCF / negative equity / missing items, `-` cells and label
+fall-through, no statements at all, trend labels and the minimum-period rule, growing
+revenue with deteriorating margins, hand-computed growth and CAGRs (5-y unavailable with
+the reason), growth edge cases (zero base, sign change, single year), sector-relative
+median; point-in-time (a live capture is visible from its capture day, a backfilled one
+from period end + 90 d — leap year included), a restatement invisible until captured;
+**real KCB FY2025**: ROE 66,819 / avg(331,466, 274,888) = 22.0 % (the site's 20.9 %
+averages quarterly equity), ROA within 0.2 pp of the site's 3.17 %, net margin, FCF
+−130,880 m kept negative, D/E, revenue growth 5.6 %, EPS growth, 3-y CAGR, dividend
+growth 5.0/3.0; the FY2023 dividend gap is `missing`, not zero; **real SCOM FY2026**
+industrial margins and interest coverage; an `as_of` of 2023-03-30 sees FY2021 only;
+the job with sector-relative growth; CLI.
