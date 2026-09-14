@@ -86,7 +86,7 @@ def company(
                 "cash_and_equivalents",
             ):
                 rows.append(raw_row(ticker, "balance", year, item, value))
-            elif item in ("operating_cash_flow", "free_cash_flow"):
+            elif item in ("operating_cash_flow", "free_cash_flow", "common_dividends_paid"):
                 rows.append(raw_row(ticker, "cashflow", year, item, value))
             else:
                 rows.append(raw_row(ticker, "income", year, item, value))

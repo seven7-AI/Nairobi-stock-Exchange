@@ -235,4 +235,19 @@ def compute_fundamentals_command(
     )
 
 
+@compute_app.command("valuation-metrics")
+def compute_valuation_metrics_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Valuation multiples (P/E, P/B, P/S, EV/EBITDA, yields), history/sector/market
+    relatives and the dividend classification."""
+    from app.web.services.analytics.valuation_metrics import compute_valuation_metrics
+
+    settings, source = _scraper_source()
+    _print_compute(
+        compute_valuation_metrics(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    )
+
+
 __all__ = ["analytics_app"]
