@@ -319,6 +319,56 @@ class RankingConfig(BaseModel):
     compounder_min_known: float = Field(default=0.6, gt=0.0, le=1.0)
 
 
+class FairValueConfig(BaseModel):
+    """Fair-value engine assumptions. Every number here is an *assumption* and is
+    written into the valuation's ``assumptions`` so the reader sees it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Equity risk premium over the risk-free rate (``market.risk_free_rate``); Kenya's
+    #: country premium puts it well above developed-market figures.
+    equity_risk_premium: float = Field(default=0.07, ge=0.0, le=0.3)
+    default_beta: float = Field(default=1.0, gt=0.0)
+    beta_floor: float = Field(default=0.5, gt=0.0)
+    beta_cap: float = Field(default=1.5, gt=0.0)
+    #: A scenario moves the discount rate by this much (bear up, bull down).
+    rate_shift: float = Field(default=0.01, ge=0.0)
+    # DCF (free cash flow = OCF - capex, treated as cash flow to equity)
+    projection_years: int = Field(default=5, ge=1, le=15)
+    terminal_growth: float = Field(default=0.05, ge=0.0, le=0.1)
+    terminal_growth_bear: float = Field(default=0.03, ge=0.0, le=0.1)
+    terminal_growth_bull: float = Field(default=0.06, ge=0.0, le=0.1)
+    growth_floor: float = Field(default=-0.05, le=0.0)
+    growth_cap: float = Field(default=0.15, ge=0.0)
+    growth_shift: float = Field(default=0.05, ge=0.0)
+    fcf_average_years: int = Field(default=3, ge=1)
+    # justified P/B and dividend discount (financials)
+    roe_bear_multiplier: float = Field(default=0.85, gt=0.0, le=1.0)
+    roe_bull_multiplier: float = Field(default=1.10, ge=1.0)
+    sustainable_growth_cap: float = Field(default=0.10, ge=0.0)
+    dividend_growth_cap: float = Field(default=0.10, ge=0.0)
+    dividend_growth_shift: float = Field(default=0.02, ge=0.0)
+    # relative multiples
+    multiple_haircut: float = Field(default=0.20, ge=0.0, lt=1.0)
+    min_peers: int = Field(default=3, ge=2)
+    # uncertainty score (0-1): additive penalties, clamped
+    uncertainty_base: float = Field(default=0.10, ge=0.0, le=1.0)
+    uncertainty_single_method: float = Field(default=0.20, ge=0.0, le=1.0)
+    uncertainty_thin_history: float = Field(default=0.15, ge=0.0, le=1.0)
+    uncertainty_deteriorating: float = Field(default=0.15, ge=0.0, le=1.0)
+    uncertainty_illiquid: float = Field(default=0.15, ge=0.0, le=1.0)
+    uncertainty_leverage: float = Field(default=0.15, ge=0.0, le=1.0)
+    uncertainty_dispersion: float = Field(default=0.15, ge=0.0, le=1.0)
+    uncertainty_no_beta: float = Field(default=0.05, ge=0.0, le=1.0)
+    min_fiscal_years: int = Field(default=3, ge=1)
+    illiquid_score: float = Field(default=40.0, ge=0.0, le=100.0)
+    leverage_limit: float = Field(default=1.5, ge=0.0)
+    coverage_limit: float = Field(default=2.0, ge=0.0)
+    dispersion_limit: float = Field(default=0.5, ge=0.0)
+    #: At or above this uncertainty the margin of safety is flagged as not actionable.
+    uncertainty_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -334,6 +384,7 @@ class AnalyticsConfig(BaseModel):
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
     factors: FactorConfig = Field(default_factory=FactorConfig)
     ranking: RankingConfig = Field(default_factory=RankingConfig)
+    fair_value: FairValueConfig = Field(default_factory=FairValueConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -383,6 +434,7 @@ __all__ = [
     "FactorConfig",
     "FactorDefinition",
     "FactorInput",
+    "FairValueConfig",
     "FundamentalsConfig",
     "LiquidityConfig",
     "MarketConfig",

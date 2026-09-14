@@ -268,6 +268,19 @@ def compute_factors_command(
     console.print(f"rows written {result.rows_written} · universe {len(result.universe)}")
 
 
+@compute_app.command("fair-value")
+def compute_fair_value_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Per-method fair values (justified P/B, DDM, DCF, EV/EBITDA, P/E) and the blend."""
+    from app.web.services.analytics.fair_value import compute_fair_value
+
+    settings, source = _scraper_source()
+    result = compute_fair_value(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    _print_compute(result)
+
+
 @compute_app.command("rankings")
 def compute_rankings_command(
     as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),

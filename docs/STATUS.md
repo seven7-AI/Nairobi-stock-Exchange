@@ -624,3 +624,58 @@ explanation schema, custom weights = a new model hash; on the real fixture (2024
 the job scores the statement-bearing instruments, leaves delisted KENO `unavailable`
 without a rank, orders market ranks by score, registers the model once, is idempotent;
 CLI `compute rankings`, `rank --top`, `rank --ticker`, and the empty-store exit code.
+
+## #14 Fair-value engine  ✅ 2026-09-14
+
+`services/analytics/fair_value/engine.py` — independent per-share valuations by method,
+applicability by sector, blended into a range. Every assumption used is written into the
+row's `assumptions` JSON (`FairValueConfig`, part of the calc-version hash):
+
+- cost of equity = risk-free 12 % + clamped `beta_12m` (0.5–1.5, default 1 when no beta)
+  × equity risk premium 7 %; scenarios move the rate ±1 pp;
+- **financials** (banking, insurance, investment services) — justified P/B
+  `(ROE − g)/(r − g)` × book value per share with g = retention × ROE capped at 10 %
+  (bear ROE ×0.85, bull ×1.10), and a Gordon dividend discount `DPS × (1+g)/(r − g)`
+  with g from the dividend 3-y CAGR (else retention × ROE), capped at 10 %, ±2 pp;
+- **other operating companies** — a 5-year FCF DCF (FCF = OCF − capex treated as cash
+  flow to equity, base = mean of the last 3 fiscal years per share, growth = revenue
+  3-y CAGR clamped to [−5 %, 15 %] ±5 pp, terminal 5 % (3 % / 6 %)), EV/EBITDA and P/E
+  relative to the **sector median of peers with a positive multiple** (≥ 3 peers, else
+  the market median), ±20 % on the multiple, net debt taken off the EV methods;
+- indices, ETFs, REITs and unclassified instruments are `not_applicable`; negative
+  earnings / EBITDA / FCF base / equity, ROE ≤ growth or rate ≤ growth are
+  `not_meaningful`; missing inputs `unavailable` with the names;
+- blend = equal-weight mean of the method base cases, range = mean of bears … mean of
+  bulls, upside = intrinsic / price − 1, margin of safety = (intrinsic − price) /
+  intrinsic;
+- uncertainty (0–1) = 0.10 + 0.20 single method + 0.15 fewer than 3 fiscal years + 0.15
+  deteriorating ROE / margins + 0.15 thin or unknown liquidity + 0.15 balance-sheet risk
+  (D/E > 1.5 non-financial, or interest coverage < 2) + 0.05 no beta + 0.15 methods
+  disagree (range > 50 % of the blend); at or above 0.6 the margin of safety is stored
+  with `actionable = False` — it is a number, never a signal on its own.
+
+`valuations` (Alembic `20260914_0009`): one row per method plus the `blended` row.
+`nse-analysis analytics compute fair-value [--as-of] [--ticker …]`.
+
+**Live** (10 tickers with statements): `--as-of 2024-12-31` — KCB (beta 0.92, r 18.4 %)
+justified P/B 58.0 (ROE 16.9 % on FY2023, BVPS 70.8), DDM 26.1 (DPS 2.0, g 10 %), blend
+42.1 vs price 41.6, upside +1 %, uncertainty 0.40 (deteriorating ROE, methods disagree);
+SCOM DCF 6.7 (FCF/share 1.34, r 22.5 %) and P/E-relative 6.8 (market median 4.3×) vs
+17.05 → −60 %; SBIC blend 266 vs 137 (+94 %, uncertainty 0.10); KEGN 12.0 vs 3.64.
+`--as-of 2026-09-13` (no beta, no liquidity score across the gap → r 19 %, uncertainty
+0.30–0.50): KCB justified P/B 138.0 (ROE 22.0 %, BVPS 103.2), DDM 61.1 (DPS 5.0), blend
+99.6 vs 94.0 (+6 %); SCOM DCF 16.3 / P/E-rel 16.7 vs 35.2 (−53 %); EQTY 110.2 vs 102;
+BAT 345.5 vs 560 (−38 %). EV/EBITDA is `unavailable` everywhere: fewer than three
+non-financials carry an EBITDA multiple yet. BKG / SCBK `unavailable` — no book value,
+ROE or DPS in their captured statements.
+
+Tests (12): CAPM with clamped beta; justified P/B by hand (166.67 / 112.5 / 218.75,
+sustainable growth, negative ROE / equity, missing inputs named, default retention, rate
+≤ growth); DDM by hand (61.11 / 45.0 / 68.75, growth sources, no dividend); DCF by hand
+(108.42 / 78.21 / 148.77, negative base, growth clamp); relative multiples by hand (EV
+net of debt, P/E, loss-making, no peers, debt exceeding EV); blend, upside and margin;
+`not_applicable` sectors, all-methods-unavailable with the reasons, no price; the
+uncertainty ledger and the not-actionable flag; peer-median rule; on the real fixture
+(2024-12-31) KCB gets P/B–ROE + DDM only and SCOM DCF + EV/EBITDA + P/E only, the
+market-median fallback, idempotency; point-in-time at 2022-06-30 (FY2021 statements
+visible, stored ROE absent → justified P/B says so, DDM alone → not actionable); CLI.
