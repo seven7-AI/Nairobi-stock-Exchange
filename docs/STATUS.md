@@ -568,3 +568,59 @@ size, every factor reported for every ticker with group sizes; on the real fixtu
 KCB momentum known with a banking percentile, KCB quality with no sector percentile
 (only two banks have statements), one calc version, idempotent re-run, a changed factor
 definition is a new calc version with both sets of rows kept, CLI.
+
+## #13 Composite ranking, classification, value trap, compounder, explainability  ✅ 2026-09-14
+
+`services/analytics/ranking/engine.py` over the stored factor scores and metric rows for
+the date, `factor-model v1` (`AnalyticsConfig.ranking`, registered in `model_registry`
+with its weights as `params`; the weights are part of the calc-version hash):
+
+- `overall` (0–100) — weighted **market percentile** of the factors available for the
+  stock, weights quality .25 / value .20 / growth .15 / momentum .15 / risk .10 /
+  dividend .10 / liquidity .05 renormalised over what is available; below 50 % of the
+  weight the stock is `unavailable` naming the missing factors. `confidence` = available
+  weight share × mean input coverage;
+- classification — Strong Candidate ≥ 80, Buy Candidate ≥ 65, Watch ≥ 50, Neutral ≥ 35,
+  Weak ≥ 20, else Avoid; a liquidity score under 20, confidence under 0.5 or a HIGH
+  value-trap risk caps the class at Watch (never lifts it), and the explanation says
+  which gate bit;
+- value-trap risk — "cheap" (P/E ≥ 25 % below the market median, P/B < 1, or yield ≥
+  8 %) crossed with deterioration signals (revenue fell, EPS fell, ROE / margins
+  deteriorating, leverage rising, negative FCF, 12-1 momentum < −10 %, liquidity score
+  < 40, dividend cut): HIGH = cheap + ≥ 3 signals, MEDIUM = cheap + any signal or ≥ 4
+  signals, LOW otherwise, `unavailable` when no multiple is known. Only *known*
+  metrics can fire a signal;
+- compounder score — share of applicable criteria met (revenue and EPS 3-y CAGR ≥ 8 %,
+  revenue grew, ROE ≥ 15 %, ROA ≥ 5 % (1 % for financials), positive FCF, FCF margin ≥
+  5 %, D/E ≤ 1 (not judged for financials), margins not deteriorating, dividend growing,
+  positive momentum); `unavailable` when fewer than half can be judged;
+- market / sector / industry ranks among the scored, and the explanation JSON
+  (model, overall with provenance, confidence, every factor's percentiles / weight /
+  coverage, positive and negative factors, the caps, value-trap signals, compounder
+  criteria met, ranks, and a disclaimer that these are model outputs).
+
+`stock_rankings` (Alembic `20260914_0008`) — one row per (ticker, date, model, calc
+version). `nse-analysis analytics compute rankings`; `nse-analysis analytics rank
+[--as-of] [--top N] [--ticker X]` prints the table or one explanation.
+
+**Live** (`--as-of 2024-12-31`, universe 85): 8 scored — the eight with statements
+known on the date; the other 77 have only momentum, risk and liquidity (30 % of the
+weight) and are honestly `unavailable` until the scraper's statement rotation covers
+them. SBIC 77.7 Buy Candidate (trap medium, compounder 71), BRIT 68.6 Buy, KEGN 67.0 Buy,
+EQTY 62.8 Watch (trap HIGH), DTK 60.4 Watch, BAT 53.9 Watch (trap HIGH), SCOM 46.9
+Neutral (compounder 88), KCB 45.8 Neutral — value trap HIGH on FY2023 statements: P/B
+0.59 with EPS fell, ROE / margins deteriorating, leverage rising, negative FCF, dividend
+cut (KCB did skip its FY2023 dividend). `--as-of 2026-09-13`: 8 scored on the fundamental
+factors only (market factors `unavailable` across the gap), confidence 0.52–0.70: EQTY
+78.7 Buy Candidate (compounder 100), BAT 63.4 Watch (trap HIGH), SCOM 61.1 Watch, BRIT
+57.3 Watch, KEGN / DTK / SBIC / KCB Neutral.
+
+Tests (10): renormalisation and confidence by hand, the minimum-weight rule with the
+missing factors named, every band and the three caps (a cap only pulls down, and is
+reported only when it bit), value trap HIGH with the exact signal list, MEDIUM / LOW /
+`unavailable` / thin-liquidity cases, compounder for an industrial vs a bank
+(applicability) and the minimum-known rule, `rank_universe` ranks per level and the full
+explanation schema, custom weights = a new model hash; on the real fixture (2024-12-31)
+the job scores the statement-bearing instruments, leaves delisted KENO `unavailable`
+without a rank, orders market ranks by score, registers the model once, is idempotent;
+CLI `compute rankings`, `rank --top`, `rank --ticker`, and the empty-store exit code.

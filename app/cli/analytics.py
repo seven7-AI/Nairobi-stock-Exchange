@@ -268,4 +268,77 @@ def compute_factors_command(
     console.print(f"rows written {result.rows_written} · universe {len(result.universe)}")
 
 
+@compute_app.command("rankings")
+def compute_rankings_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+) -> None:
+    """Composite score, classification, value-trap and compounder flags from factor scores."""
+    from app.web.services.analytics.ranking import compute_rankings
+
+    settings = _settings()
+    result = compute_rankings(settings, as_of=_parse_day(as_of))
+    table = Table(title=f"rankings as of {result.as_of} (calc version {result.calc_version_id})")
+    table.add_column("Class")
+    table.add_column("Count", justify="right")
+    for label, count in sorted(result.classes.items(), key=lambda item: -item[1]):
+        table.add_row(label, str(count))
+    console.print(table)
+    console.print(
+        f"rows written {result.rows_written} · scored {result.scored} / {len(result.universe)}"
+    )
+
+
+@analytics_app.command("rank")
+def rank_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Ranking date (default: latest)"),
+    top: int = typer.Option(20, "--top", min=1, help="How many to show"),
+    ticker: str | None = typer.Option(None, "--ticker", help="Show one instrument's explanation"),
+) -> None:
+    """Show the stored ranking table for a date, or one instrument's explanation."""
+    import json
+
+    from sqlalchemy import func, select
+
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.models import StockRanking
+    from app.web.db.analytics.services.stock_rankings import load_rankings
+
+    settings = _settings()
+    with analytics_session(settings) as session:
+        day = (
+            _parse_day(as_of)
+            or session.execute(select(func.max(StockRanking.as_of_date))).scalar_one_or_none()
+        )
+        if day is None:
+            console.print("no rankings stored yet - run `analytics compute rankings` first")
+            raise typer.Exit(code=1)
+        if ticker is not None:
+            rows = load_rankings(session, as_of_date=day, ticker_symbol=ticker)
+            if not rows:
+                console.print(f"no ranking for {ticker.upper()} as of {day}")
+                raise typer.Exit(code=1)
+            console.print_json(json.dumps(rows[-1].explanation))
+            return
+        rows = load_rankings(session, as_of_date=day, limit=top)
+        table = Table(title=f"ranking as of {day} ({rows[0].model_name if rows else ''})")
+        for column in ("#", "Ticker", "Overall", "Conf", "Class", "Trap", "Compounder"):
+            table.add_column(
+                column, justify="right" if column not in ("Ticker", "Class") else "left"
+            )
+        trap_names = {0: "low", 1: "medium", 2: "high"}
+        for row in rows:
+            table.add_row(
+                str(row.market_rank or "-"),
+                row.ticker_symbol,
+                f"{row.overall_score:.1f}" if row.overall_score is not None else row.status,
+                f"{row.confidence:.2f}",
+                row.classification or "-",
+                trap_names.get(row.value_trap_risk, "-")
+                if row.value_trap_risk is not None
+                else "n/a",
+                f"{row.compounder_score:.0f}" if row.compounder_score is not None else "n/a",
+            )
+        console.print(table)
+
+
 __all__ = ["analytics_app"]
