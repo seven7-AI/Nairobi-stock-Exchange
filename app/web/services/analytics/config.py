@@ -43,6 +43,12 @@ class FundamentalsConfig(BaseModel):
     #: 60 days of period end (CMA regulations), which is where the defaults come from.
     publication_lag_days_annual: int = Field(default=90, ge=0, le=365)
     publication_lag_days_interim: int = Field(default=60, ge=0, le=365)
+    #: Fiscal years needed before a trend (improving/stable/deteriorating) is labelled.
+    trend_min_periods: int = Field(default=3, ge=2)
+    #: |slope| / mean level per period within which a trend is "stable".
+    trend_stable_band: float = Field(default=0.05, ge=0.0, le=1.0)
+    #: Sector-relative growth needs this many peers with a value.
+    min_peers: int = Field(default=3, ge=1)
 
     def publication_lag(self, period_type: str) -> timedelta:
         if period_type == "annual":
