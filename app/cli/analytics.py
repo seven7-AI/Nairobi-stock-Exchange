@@ -8,12 +8,15 @@ Thin wrappers, like the rest of the CLI: every command calls a service in
 
 from __future__ import annotations
 
+from datetime import date
+
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from app.web.config import Settings, get_settings
 from app.web.services.analytics.store import analytics_db_status, upgrade_analytics_db
+from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
 from app.web.utils.logger import configure_logging
 
 analytics_app = typer.Typer(help="Quantitative research engine: analytics store, jobs, metrics.")
@@ -24,6 +27,14 @@ def _settings() -> Settings:
     settings = get_settings()
     configure_logging(settings.logs_dir / "nse_be.log", settings.log_level)
     return settings
+
+
+def _scraper_source() -> tuple[Settings, NseScraperSource]:
+    settings = _settings()
+    source = build_market_data_source(settings)
+    if not isinstance(source, NseScraperSource):
+        raise typer.BadParameter("this command needs the nse_scraper source (canonical timeline).")
+    return settings, source
 
 
 @analytics_app.command("upgrade")
@@ -66,12 +77,8 @@ def status() -> None:
 def classify() -> None:
     """Rebuild the point-in-time sector/industry classification of every instrument."""
     from app.web.services.analytics.classification.service import classify_instruments
-    from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
 
-    settings = _settings()
-    source = build_market_data_source(settings)
-    if not isinstance(source, NseScraperSource):
-        raise typer.BadParameter("classify needs the nse_scraper source (instrument master).")
+    settings, source = _scraper_source()
     result = classify_instruments(settings, source)
     console.print(
         f"classifications rebuilt: {result.rows_written} rows for {result.tickers} instruments"
@@ -93,12 +100,8 @@ def data_quality(
 ) -> None:
     """Run the data-quality checks, record findings, write reports/data_quality/."""
     from app.web.services.analytics.quality import run_data_quality
-    from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
 
-    settings = _settings()
-    source = build_market_data_source(settings)
-    if not isinstance(source, NseScraperSource):
-        raise typer.BadParameter("dq needs the nse_scraper source (canonical timeline).")
+    settings, source = _scraper_source()
     report = run_data_quality(settings, source)
 
     table = Table(title=f"Data quality — {report.instruments} instruments")
@@ -120,6 +123,43 @@ def data_quality(
         raise typer.Exit(code=1)
     if threshold == "warning" and (report.errors or report.warnings):
         raise typer.Exit(code=1)
+
+
+compute_app = typer.Typer(help="Compute market and fundamental metrics into the analytics store.")
+analytics_app.add_typer(compute_app, name="compute")
+
+
+def _parse_day(value: str | None) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise typer.BadParameter(f"--as-of must be YYYY-MM-DD, got {value!r}") from exc
+
+
+@compute_app.command("returns")
+def compute_returns_command(
+    as_of: str | None = typer.Option(
+        None, "--as-of", help="Evaluation date (YYYY-MM-DD); default today"
+    ),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Trailing 1D..36M, YTD and YoY returns for every instrument as of a date."""
+    from app.web.services.analytics.returns import compute_returns
+
+    settings, source = _scraper_source()
+    result = compute_returns(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    table = Table(title=f"Returns as of {result.as_of} (calc version {result.calc_version_id})")
+    table.add_column("Metric")
+    table.add_column("Known / processed", justify="right")
+    for metric, count in sorted(result.known_counts.items()):
+        table.add_row(metric, f"{count} / {len(result.tickers_processed)}")
+    console.print(table)
+    console.print(
+        f"rows written {result.rows_written} · instruments {len(result.tickers_processed)} · "
+        f"skipped {len(result.tickers_skipped)}"
+    )
 
 
 __all__ = ["analytics_app"]
