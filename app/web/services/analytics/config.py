@@ -103,6 +103,22 @@ class MomentumConfig(BaseModel):
     min_peers: int = Field(default=2, ge=1)
 
 
+class RiskConfig(BaseModel):
+    """Risk engine windows and minimums (``analytics/risk``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    volatility_window: str = Field(default="12M", pattern=r"^(1|3|6|12|24|36)M$")
+    rolling_window: str = Field(default="3M", pattern=r"^(1|3|6|12|24|36)M$")
+    drawdown_window: str = Field(default="36M", pattern=r"^(1|3|6|12|24|36)M$")
+    correlation_window: str = Field(default="12M", pattern=r"^(1|3|6|12|24|36)M$")
+    beta_windows: tuple[str, ...] = ("12M", "36M")
+    #: Daily-return pairs needed for volatility, beta, correlation, Sharpe.
+    min_observations: int = Field(default=100, ge=10)
+    min_rolling_observations: int = Field(default=30, ge=5)
+    min_peers: int = Field(default=2, ge=1)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -113,6 +129,7 @@ class AnalyticsConfig(BaseModel):
     market: MarketConfig = Field(default_factory=MarketConfig)
     quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
     momentum: MomentumConfig = Field(default_factory=MomentumConfig)
+    risk: RiskConfig = Field(default_factory=RiskConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -162,5 +179,6 @@ __all__ = [
     "FundamentalsConfig",
     "MarketConfig",
     "MomentumConfig",
+    "RiskConfig",
     "register_calc_version",
 ]

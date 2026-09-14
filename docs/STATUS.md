@@ -364,3 +364,38 @@ start on 2018-11-29, at its 52-week high (54.0), sector-relative vs EQTY/ABSA/NC
 post-gap `as_of` keeps only short windows and reports `^NASI` ending in 2024;
 look-ahead; the job resolves peers through the classification index and rewrites rows in
 place; CLI.
+
+## #8 Risk engine  ✅ 2026-09-14
+
+`services/analytics/risk/engine.py`, on trailing in-segment windows: `volatility_daily`
+/ `_weekly` / `_monthly` (sample std of daily, week-end and month-end returns over 12M),
+`volatility_annualised` (daily × √252), `volatility_rolling_3m`; `drawdown_current`,
+`max_drawdown_36m` (peak and trough dates as the window bounds; falls back to the whole
+current segment when 36M of history is not there), `drawdown_recovery_days`
+(`unavailable` while not recovered, `not_applicable` when there was no drawdown);
+`beta_12m` / `beta_36m` and `correlation_market_12m` on daily returns inner-joined on
+date with `^NASI` (≥ 100 pairs), `correlation_sector_12m` against the equal-weighted
+daily return of the sector peers; `sharpe_12m` / `sortino_12m` on the configured
+risk-free rate (12 %, `AnalyticsConfig.market.risk_free_rate`, versioned — a changed
+rate is a new `calc_version` and the old rows stay). The stock-to-stock matrix goes to
+`correlations` (Alembic `20260914_0005`, upper triangle per as-of/window/version).
+`nse-analysis analytics compute risk [--no-matrix]`.
+
+**Live** (`--as-of 2024-12-31`): 96 instruments (6 listed after that date), 3,297
+metric rows + 1,953 correlation pairs. Betas vs `^NASI`: SCOM 1.76, IMH 1.03; deepest
+36M drawdowns TCL −78 % (2022-01 → 2024-08), CGEN −75 %; best Sharpe ORCH 3.27. The
+`^N20I` −90 % "drawdown" (2024-11-26 → 12-05) and 9.1 annualised volatility are the
+decimal-slip defect `analytics dq` already reports — the engine computes what the
+archive says; the repair belongs at the source (noted for the hardening issue).
+
+Tests (19): volatility vs numpy with annualisation, constant price → zero volatility and
+not-meaningful Sharpe, minimum observations, drawdown peak/trough/recovery on a
+constructed path and an unrecovered one, short-history fallback, beta of a 2× copy = 2
+and of an inverse = −1 (correlation ±1), benchmark missing/short/flat, sector
+correlation of affine copies = 1 and the minimum-peer rule, correlation matrix upper
+triangle with ±1 checks and the observation minimum, Sharpe against a hand-formula and a
+higher risk-free rate lowering it, always-rising series has no downside deviation;
+**hand-computed KCB 2019**: daily vol 0.01484, annualised 0.2355, beta 0.639,
+correlation 0.380 vs `^NASI`; `^NASI` 2008-06-09 → 2009-03-09 drawdown −56.27 %;
+post-gap `as_of` unavailable naming the gap; look-ahead; the job writes metrics and the
+matrix idempotently; a changed risk-free rate keeps both versions; CLI.
