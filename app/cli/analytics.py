@@ -354,4 +354,93 @@ def rank_command(
         console.print(table)
 
 
+@compute_app.command("forecasts")
+def compute_forecasts_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Origin date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Return-forecast baselines (naive, mean, EWMA, AR(1)) per horizon for every stock."""
+    from app.web.services.analytics.forecasting import compute_forecasts
+
+    settings, source = _scraper_source()
+    result = compute_forecasts(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    table = Table(title=f"forecasts as of {result.as_of} (calc version {result.calc_version_id})")
+    table.add_column("Model")
+    table.add_column("Known forecasts", justify="right")
+    for model, count in sorted(result.known_counts.items()):
+        table.add_row(model, str(count))
+    console.print(table)
+    console.print(
+        f"rows written {result.rows_written} · universe {len(result.tickers)} "
+        f"· skipped {len(result.skipped)}"
+    )
+
+
+def _print_model_summary(summary: dict[str, dict[str, object]], admitted: tuple[str, ...]) -> None:
+    table = Table(title="out-of-sample summary per model and horizon")
+    for column in ("Model", "Horizon", "n", "MAE", "RMSE", "Dir. acc.", "Bench. hit", "90% cov."):
+        table.add_column(column, justify="right" if column not in ("Model", "Horizon") else "left")
+
+    def fmt(stats: dict[str, object], key: str) -> str:
+        value = stats.get(key)
+        return "-" if value is None else f"{float(str(value)):.3f}"
+
+    for model, horizons in summary.items():
+        for horizon, stats in horizons.items():
+            s = stats if isinstance(stats, dict) else {}
+            table.add_row(
+                model,
+                horizon,
+                str(s.get("n", 0)),
+                fmt(s, "mae"),
+                fmt(s, "rmse"),
+                fmt(s, "directional_accuracy"),
+                fmt(s, "benchmark_hit_rate"),
+                fmt(s, "interval_coverage"),
+            )
+    console.print(table)
+    console.print("admitted candidates: " + (", ".join(admitted) if admitted else "none"))
+
+
+forecast_app = typer.Typer(help="Evaluate stored forecasts and run walk-forward tests.")
+analytics_app.add_typer(forecast_app, name="forecast")
+
+
+@forecast_app.command("evaluate")
+def evaluate_forecasts_command(
+    as_of: str | None = typer.Option(
+        None, "--as-of", help="Evaluate what has elapsed by this date"
+    ),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Score every forecast whose horizon has elapsed; summarise and gate the models."""
+    from app.web.services.analytics.forecasting import evaluate_forecasts
+
+    settings, source = _scraper_source()
+    result = evaluate_forecasts(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    _print_model_summary(result.summary, result.admitted)
+    console.print(
+        f"evaluated {result.evaluated} · pending {result.pending} · skipped {result.skipped}"
+    )
+
+
+@forecast_app.command("walk-forward")
+def walk_forward_command(
+    ticker: list[str] = typer.Option(..., "--ticker", help="Tickers to test"),
+    start: str = typer.Option(..., "--from", help="First origin (YYYY-MM-DD)"),
+    end: str = typer.Option(..., "--to", help="Last origin / evaluation date (YYYY-MM-DD)"),
+) -> None:
+    """Forecast at monthly origins, each seeing only its past, then evaluate and summarise."""
+    from app.web.services.analytics.forecasting import walk_forward
+
+    settings, source = _scraper_source()
+    first, last = _parse_day(start), _parse_day(end)
+    assert first is not None and last is not None
+    result = walk_forward(settings, source, tickers=ticker, start=first, end=last)
+    _print_model_summary(result.summary, result.admitted)
+    console.print(
+        f"evaluated {result.evaluated} · pending {result.pending} · skipped {result.skipped}"
+    )
+
+
 __all__ = ["analytics_app"]

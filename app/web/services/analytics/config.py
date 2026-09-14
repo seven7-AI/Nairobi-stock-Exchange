@@ -369,6 +369,35 @@ class FairValueConfig(BaseModel):
     uncertainty_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
+class ForecastConfig(BaseModel):
+    """Statistical return-forecast baselines and their evaluation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Forecast horizons in calendar months.
+    horizons: tuple[int, ...] = (1, 3, 6, 12)
+    #: Models run for every stock; each is a baseline until something beats it.
+    models: tuple[str, ...] = ("naive", "mean", "ewma", "ar1")
+    #: Candidate models are admitted only when they beat every baseline out of sample.
+    candidate_models: tuple[str, ...] = ()
+    #: A candidate must beat the best baseline's MAE by this share and match its hit rate.
+    admit_margin: float = Field(default=0.0, ge=0.0, le=1.0)
+    #: Monthly log-return observations (contiguous, no gap) needed to forecast at all.
+    min_months: int = Field(default=36, ge=12)
+    #: Months of history the mean / volatility / AR(1) estimates use.
+    lookback_months: int = Field(default=60, ge=12)
+    ewma_halflife_months: float = Field(default=12.0, gt=0.0)
+    #: P(drawdown) is the probability of losing more than this from the origin at some
+    #: point within the horizon (Brownian first-passage under the forecast's drift/vol).
+    drawdown_threshold: float = Field(default=0.20, gt=0.0, lt=1.0)
+    #: Central interval whose coverage the evaluation checks (q05..q95).
+    interval: float = Field(default=0.90, gt=0.0, lt=1.0)
+    #: Monthly origins step for walk-forward evaluation.
+    walk_forward_step_months: int = Field(default=1, ge=1)
+    #: AR(1) coefficient magnitude above this is treated as unit-root-like and shrunk.
+    ar1_max_phi: float = Field(default=0.95, gt=0.0, lt=1.0)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -385,6 +414,7 @@ class AnalyticsConfig(BaseModel):
     factors: FactorConfig = Field(default_factory=FactorConfig)
     ranking: RankingConfig = Field(default_factory=RankingConfig)
     fair_value: FairValueConfig = Field(default_factory=FairValueConfig)
+    forecast: ForecastConfig = Field(default_factory=ForecastConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -435,6 +465,7 @@ __all__ = [
     "FactorDefinition",
     "FactorInput",
     "FairValueConfig",
+    "ForecastConfig",
     "FundamentalsConfig",
     "LiquidityConfig",
     "MarketConfig",
