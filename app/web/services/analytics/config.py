@@ -272,6 +272,53 @@ class FactorConfig(BaseModel):
     min_group_size: int = Field(default=3, ge=2)
 
 
+class RankingConfig(BaseModel):
+    """The composite factor model: weights, classification bands, gates, detectors.
+
+    Starting assumptions, not conclusions - the backtester exists to test them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model_name: str = "factor-model"
+    model_version: str = "1"
+    #: factor -> weight; renormalised over the factors that are available per stock.
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "quality": 0.25,
+            "value": 0.20,
+            "growth": 0.15,
+            "momentum": 0.15,
+            "risk": 0.10,
+            "dividend": 0.10,
+            "liquidity": 0.05,
+        }
+    )
+    #: Share of total weight that must be available for an overall score.
+    min_weight_available: float = Field(default=0.5, gt=0.0, le=1.0)
+    #: Lower bounds of Strong Candidate, Buy Candidate, Watch, Neutral, Weak (else Avoid).
+    class_thresholds: tuple[float, float, float, float, float] = (80.0, 65.0, 50.0, 35.0, 20.0)
+    #: A liquidity score below this caps the classification at Watch.
+    liquidity_gate: float = Field(default=20.0, ge=0.0, le=100.0)
+    #: Confidence below this caps the classification at Watch.
+    confidence_gate: float = Field(default=0.5, ge=0.0, le=1.0)
+    # value-trap detector
+    trap_cheap_pe_vs_market: float = Field(default=-0.25, le=0.0)
+    trap_cheap_pb: float = Field(default=1.0, gt=0.0)
+    trap_cheap_yield: float = Field(default=0.08, ge=0.0)
+    trap_momentum: float = Field(default=-0.10, le=0.0)
+    trap_liquidity: float = Field(default=40.0, ge=0.0, le=100.0)
+    trap_high_signals: int = Field(default=3, ge=1)
+    # compounder detector
+    compounder_growth: float = Field(default=0.08, ge=0.0)
+    compounder_roe: float = Field(default=0.15, ge=0.0)
+    compounder_roa: float = Field(default=0.05, ge=0.0)
+    compounder_roa_financial: float = Field(default=0.015, ge=0.0)
+    compounder_fcf_margin: float = Field(default=0.05, ge=0.0)
+    compounder_max_leverage: float = Field(default=1.0, gt=0.0)
+    compounder_min_known: float = Field(default=0.6, gt=0.0, le=1.0)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -286,6 +333,7 @@ class AnalyticsConfig(BaseModel):
     liquidity: LiquidityConfig = Field(default_factory=LiquidityConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
     factors: FactorConfig = Field(default_factory=FactorConfig)
+    ranking: RankingConfig = Field(default_factory=RankingConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -339,6 +387,7 @@ __all__ = [
     "LiquidityConfig",
     "MarketConfig",
     "MomentumConfig",
+    "RankingConfig",
     "RiskConfig",
     "ValuationConfig",
     "register_calc_version",
