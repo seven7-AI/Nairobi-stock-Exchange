@@ -184,4 +184,27 @@ def compute_momentum_command(
     )
 
 
+@compute_app.command("risk")
+def compute_risk_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+    no_matrix: bool = typer.Option(
+        False, "--no-matrix", help="Skip the stock-to-stock correlation matrix"
+    ),
+) -> None:
+    """Risk: volatility, drawdown, beta, correlations, Sharpe/Sortino (+ correlation matrix)."""
+    from app.web.services.analytics.risk import compute_risk
+
+    settings, source = _scraper_source()
+    _print_compute(
+        compute_risk(
+            settings,
+            source,
+            as_of=_parse_day(as_of),
+            tickers=ticker or None,
+            with_correlation_matrix=not no_matrix,
+        )
+    )
+
+
 __all__ = ["analytics_app"]
