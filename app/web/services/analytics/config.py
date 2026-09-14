@@ -89,6 +89,20 @@ class DataQualityConfig(BaseModel):
     min_observations: int = Field(default=20, ge=1)
 
 
+class MomentumConfig(BaseModel):
+    """Momentum engine parameters (``analytics/momentum``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Moving-average lengths in observations (trading days).
+    ma_short: int = Field(default=50, ge=5, le=250)
+    ma_long: int = Field(default=200, ge=20, le=500)
+    #: Window for the signed-R² trend strength.
+    trend_window: str = Field(default="6M", pattern=r"^(1|3|6|12|24|36)M$")
+    #: Sector-relative returns need at least this many peers with a known return.
+    min_peers: int = Field(default=2, ge=1)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -98,6 +112,7 @@ class AnalyticsConfig(BaseModel):
     fundamentals: FundamentalsConfig = Field(default_factory=FundamentalsConfig)
     market: MarketConfig = Field(default_factory=MarketConfig)
     quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
+    momentum: MomentumConfig = Field(default_factory=MomentumConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -146,5 +161,6 @@ __all__ = [
     "DataQualityConfig",
     "FundamentalsConfig",
     "MarketConfig",
+    "MomentumConfig",
     "register_calc_version",
 ]

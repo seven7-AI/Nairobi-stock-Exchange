@@ -335,3 +335,32 @@ flagged window, YTD, tiny prices, cumulative/rolling; **hand-computed KCB** at
 the 2007 split visible; a **look-ahead test** (appending or tampering rows after T
 leaves every metric byte-identical); the compute job idempotent (upsert, not append)
 with unavailable rows carrying reasons; CLI.
+
+## #7 Momentum engine  ✅ 2026-09-14
+
+`services/analytics/momentum/engine.py`, on the same `PriceSeries` and window rules as
+the returns engine: `momentum_{1m,3m,6m,12m,24m}`, `momentum_12m_1m` (12-1, skipping
+the reversal month), `relative_{1m,3m,6m,12m}_vs_market` (minus `^NASI`, fallback
+`^N20I`), `relative_{…}_vs_sector` (minus the equal-weighted mean of the point-in-time
+sector peers from `classifications`; needs ≥ `min_peers` = 2 known), `ma_50`/`ma_200`
+over the last N observations **inside one segment**, `price_to_ma_*`,
+`ma_short_over_long`, `trend_strength_6m` (R² of log-price on time, signed by the
+slope), `momentum_persistence_12m` (share of positive month-ends), and
+`distance_from_52w_{high,low}`. Parameters in `AnalyticsConfig.momentum`.
+`nse-analysis analytics compute momentum` writes to `market_metrics`.
+
+**Live** (`--as-of 2024-12-31`): 102 instruments, 2,346 rows. `^NASI` returned
++34.1 % in 2024; strongest 12M relative to it: PORT +248 pp, ORCH +225 pp, KPLC +205 pp;
+cleanest 6M uptrends SCBK 0.91, KPLC 0.86, GLD 0.84. Sector-relative known for 67
+(the rest lack peers or history); market-relative for 72.
+
+Tests (19): synthetic constant-growth series (12-1 equals 12M by construction),
+benchmark subtraction and the missing-benchmark reason, equal-weighted peer mean with
+the minimum-peer rule, the stock's own blocker winning, MAs and price-to-MA, an MA that
+would span a gap refused, signed R² (up ≈ +1, down ≈ −1, flat = zero, zig-zag ≈ 0),
+persistence, 52-week range; **hand-computed KCB at 2019-12-31**: relative 12M vs
+`^NASI` = (54.0/37.45−1) − (166.41/140.43−1), 6M likewise, 12-1 = 50.0/39.25−1 with the
+start on 2018-11-29, at its 52-week high (54.0), sector-relative vs EQTY/ABSA/NCBA; the
+post-gap `as_of` keeps only short windows and reports `^NASI` ending in 2024;
+look-ahead; the job resolves peers through the classification index and rewrites rows in
+place; CLI.

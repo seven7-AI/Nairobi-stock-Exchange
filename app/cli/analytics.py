@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from app.web.config import Settings, get_settings
+from app.web.services.analytics.returns.service import ComputeResult
 from app.web.services.analytics.store import analytics_db_status, upgrade_analytics_db
 from app.web.services.market_data.sources import NseScraperSource, build_market_data_source
 from app.web.utils.logger import configure_logging
@@ -149,8 +150,15 @@ def compute_returns_command(
     from app.web.services.analytics.returns import compute_returns
 
     settings, source = _scraper_source()
-    result = compute_returns(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
-    table = Table(title=f"Returns as of {result.as_of} (calc version {result.calc_version_id})")
+    _print_compute(
+        compute_returns(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    )
+
+
+def _print_compute(result: ComputeResult) -> None:
+    table = Table(
+        title=f"{result.job_name} as of {result.as_of} (calc version {result.calc_version_id})"
+    )
     table.add_column("Metric")
     table.add_column("Known / processed", justify="right")
     for metric, count in sorted(result.known_counts.items()):
@@ -159,6 +167,20 @@ def compute_returns_command(
     console.print(
         f"rows written {result.rows_written} · instruments {len(result.tickers_processed)} · "
         f"skipped {len(result.tickers_skipped)}"
+    )
+
+
+@compute_app.command("momentum")
+def compute_momentum_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Momentum: 1M..24M, 12-1, relative vs market and sector, MAs, trend, 52-week range."""
+    from app.web.services.analytics.momentum import compute_momentum
+
+    settings, source = _scraper_source()
+    _print_compute(
+        compute_momentum(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
     )
 
 
