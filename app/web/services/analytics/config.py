@@ -119,6 +119,22 @@ class RiskConfig(BaseModel):
     min_peers: int = Field(default=2, ge=1)
 
 
+class LiquidityConfig(BaseModel):
+    """Liquidity engine window, minimums, score weights and bucket bounds."""
+
+    model_config = ConfigDict(frozen=True)
+
+    window: str = Field(default="6M", pattern=r"^(1|3|6|12|24|36)M$")
+    #: Observations that must report a volume before volume statistics are computed.
+    min_volume_observations: int = Field(default=20, ge=1)
+    weight_turnover: float = Field(default=0.5, ge=0.0, le=1.0)
+    weight_frequency: float = Field(default=0.2, ge=0.0, le=1.0)
+    weight_nonzero_volume: float = Field(default=0.2, ge=0.0, le=1.0)
+    weight_steadiness: float = Field(default=0.1, ge=0.0, le=1.0)
+    #: Lower bounds (0-100) for Highly liquid, Liquid, Moderately liquid, Illiquid.
+    bucket_thresholds: tuple[float, float, float, float] = (80.0, 60.0, 40.0, 20.0)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -130,6 +146,7 @@ class AnalyticsConfig(BaseModel):
     quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
     momentum: MomentumConfig = Field(default_factory=MomentumConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    liquidity: LiquidityConfig = Field(default_factory=LiquidityConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -177,6 +194,7 @@ __all__ = [
     "AnalyticsConfig",
     "DataQualityConfig",
     "FundamentalsConfig",
+    "LiquidityConfig",
     "MarketConfig",
     "MomentumConfig",
     "RiskConfig",

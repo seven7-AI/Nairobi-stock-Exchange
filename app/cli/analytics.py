@@ -207,4 +207,18 @@ def compute_risk_command(
     )
 
 
+@compute_app.command("liquidity")
+def compute_liquidity_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Liquidity: volume, turnover, trading frequency, zero-volume days, score and bucket."""
+    from app.web.services.analytics.liquidity import compute_liquidity
+
+    settings, source = _scraper_source()
+    _print_compute(
+        compute_liquidity(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    )
+
+
 __all__ = ["analytics_app"]
