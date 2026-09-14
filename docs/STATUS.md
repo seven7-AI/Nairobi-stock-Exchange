@@ -679,3 +679,69 @@ uncertainty ledger and the not-actionable flag; peer-median rule; on the real fi
 (2024-12-31) KCB gets P/B–ROE + DDM only and SCOM DCF + EV/EBITDA + P/E only, the
 market-median fallback, idempotency; point-in-time at 2022-06-30 (FY2021 statements
 visible, stored ROE absent → justified P/B says so, DDM alone → not actionable); CLI.
+
+## #15 Forecast baselines, evaluation and walk-forward  ✅ 2026-09-14
+
+`services/analytics/forecasting/engine.py` on **monthly log returns** of the segment
+that contains the origin (never across a data gap; the origin month is the as-of
+close), at 1 / 3 / 6 / 12 months:
+
+- `naive` (zero drift, historical volatility), `mean` (60-month mean and volatility
+  scaled by the horizon), `ewma` (half-life 12 months), `ar1` (AR(1) by least squares
+  on the last 60 months — ARIMA(1,0,0) — with the exact closed-form mean and variance
+  of the h-step sum; |φ| shrunk to 0.95). No `statsmodels`: four transparent
+  estimators with hand-checkable maths, no opaque dependency;
+- each forecast is a normal distribution in log space, stated as such: expected
+  simple return, q05 / q25 / q50 / q75 / q95, P(positive), P(outperform `^NASI`) from
+  the same model on the index and the monthly correlation, expected horizon
+  volatility, and P(drawdown > 20 %) — the Brownian first-passage probability of losing
+  more than the threshold from the origin at some point in the horizon;
+- fewer than 36 contiguous monthly returns → `unavailable` with the count; a stale
+  origin → `unavailable` with the age.
+
+Evaluation writes a row **only once the horizon has elapsed in the data** and the
+realised path neither crosses a gap nor ends more than 14 days short of the target:
+error, directional hit, benchmark hit, inside the 90 % interval. `summarise` gives
+MAE / RMSE / directional accuracy / benchmark hit rate / interval coverage per model
+and horizon, stored on the `model_registry` rows (`performance`). Candidate models
+(`ForecastConfig.candidate_models`, none registered) are admitted to `active` only
+when they beat every baseline's MAE at every evaluated horizon and match the best
+directional accuracy — the gate exists before any complex model does.
+
+`forecasts` + `forecast_evaluations` (Alembic `20260914_0010`). CLI
+`compute forecasts`, `forecast evaluate [--as-of]`, `forecast walk-forward --ticker …
+--from --to` (monthly origins anchored to the start day, each seeing only its own past).
+
+**Live** — `compute forecasts --as-of 2024-12-31`: universe 85, 1,360 rows, 228 known
+per model (57 stocks with 36 contiguous months); KCB 12M: naive 0.0 / [−42 %, +72 %],
+mean +0.2 %, AR(1) +3.8 % with P(positive) 0.47 and P(drawdown > 20 %) 0.58, EWMA +28 %
+(the 2024 rally weighs on it). `--as-of 2026-09-13`: 1,424 rows, **0 known** — the
+scraper era holds two monthly returns and the archive is 621 days stale, and every
+row says which. **Walk-forward 2015-01-31 → 2024-12-31, KCB / EQTY / SCOM / KEGN /
+ABSA**: 120 origins, 9,600 forecasts, 9,160 evaluated (440 pending — 2024 origins whose
+horizons have not elapsed), none skipped:
+
+| model | 1M MAE | 12M MAE | 12M dir. acc. | 12M bench. hit | 12M 90 % cov. |
+|---|---|---|---|---|---|
+| naive | 0.060 | 0.239 | 0.561 | 0.492 | 0.865 |
+| mean | 0.060 | 0.246 | 0.528 | 0.600 | 0.861 |
+| ewma | 0.061 | 0.276 | 0.467 | 0.575 | 0.837 |
+| ar1 | 0.061 | 0.243 | 0.539 | 0.594 | 0.861 |
+
+The honest reading: on NSE monthly returns the baselines are indistinguishable at
+one month, the random walk has the lowest 12-month error, direction is close to a
+coin flip, and the 90 % intervals hold 84–91 % of outcomes (slightly narrow at long
+horizons). Nothing beats the naive baseline yet; that is what the registry says.
+
+Tests (14): `shift_forward` clamps, naive / mean / EWMA by hand (lookback honoured),
+AR(1) recovers c / φ / σ from a 4,000-point synthetic series and the 2-step moments by
+hand, first-passage probability (zero-drift identity, limits, monotonicity, overflow-safe),
+the distribution by hand (quantiles, P(positive), P(outperform) with correlation, no
+dispersion → unavailable), evaluation math and the summary, the candidate gate; on the
+real fixture: monthly series point-in-time and gap-aware (54.0 at 2019-12-31, stale
+2025, two months after the gap → unavailable naming the count), KCB forecasts as of
+2019-12-31 with ^NASI, realised-return rules (54.0 / 37.45 − 1, into the gap, across the
+gap, not yet elapsed), compute-then-evaluate only when elapsed (1M / 3M at 2020-04-15,
+all four by 2021-01-31, no duplicates, second run a no-op), quarterly walk-forward
+2016–2019 with registry performance and per-origin provenance, an unregistered
+candidate stays `unavailable` and `candidate`, CLI.
