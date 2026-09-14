@@ -141,6 +141,25 @@ class LiquidityConfig(BaseModel):
     bucket_thresholds: tuple[float, float, float, float] = (80.0, 60.0, 40.0, 20.0)
 
 
+class ValuationConfig(BaseModel):
+    """Valuation-multiple and dividend-engine thresholds."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Dividend yield at or above which a stock is "high-yield" (and a trap candidate).
+    high_yield_threshold: float = Field(default=0.08, ge=0.0, le=1.0)
+    #: Payout above this share of earnings is a trap signal.
+    payout_trap_threshold: float = Field(default=1.0, ge=0.0)
+    #: Fiscal years of dividend history considered.
+    dividend_history_years: int = Field(default=5, ge=2)
+    #: Years paid without interruption before a payer is "reliable".
+    reliable_min_years: int = Field(default=3, ge=1)
+    #: Fiscal-year multiples needed before "vs history" is computed.
+    min_history_years: int = Field(default=3, ge=1)
+    #: Peers with a positive multiple needed for sector/market medians.
+    min_peers: int = Field(default=3, ge=1)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -153,6 +172,7 @@ class AnalyticsConfig(BaseModel):
     momentum: MomentumConfig = Field(default_factory=MomentumConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     liquidity: LiquidityConfig = Field(default_factory=LiquidityConfig)
+    valuation: ValuationConfig = Field(default_factory=ValuationConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -204,5 +224,6 @@ __all__ = [
     "MarketConfig",
     "MomentumConfig",
     "RiskConfig",
+    "ValuationConfig",
     "register_calc_version",
 ]

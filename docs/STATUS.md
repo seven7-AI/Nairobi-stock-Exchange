@@ -478,3 +478,46 @@ averages quarterly equity), ROA within 0.2 pp of the site's 3.17 %, net margin, 
 growth 5.0/3.0; the FY2023 dividend gap is `missing`, not zero; **real SCOM FY2026**
 industrial margins and interest coverage; an `as_of` of 2023-03-30 sees FY2021 only;
 the job with sector-relative growth; CLI.
+
+## #11 Valuation metrics and dividend engine  ✅ 2026-09-14
+
+`services/analytics/valuation_metrics/engine.py`, point-in-time: the last close on or
+before the date × the latest fiscal-year figures known on it (TTM where the site
+reports them):
+
+- `market_cap` (price × diluted shares from the statement), `enterprise_value`
+  (+ total debt − cash), `pe`, `pe_ttm`, `forward_pe` (`unavailable`: no estimates
+  source), `pb`, `ps`, `ev_ebitda`, `ev_sales` (`not_applicable` for banks and
+  insurers), `dividend_yield` / `dividend_yield_ttm`, `payout_ratio`, `fcf_yield`; a
+  negative or zero denominator (loss-making EPS, negative EBITDA, negative equity) is
+  `not_meaningful`, never a small multiple; a stale price (> 14 d) is `unavailable`;
+- `pe_vs_history` / `pb_vs_history` against the median of the company's own
+  fiscal-year multiples from the site's ratios page as known on the date (≥ 3 years);
+- `*_vs_sector` / `*_vs_market` — own multiple over the median of peers with a
+  positive multiple (≥ 3 peers), cross-sectional in the service;
+- dividends — `dividend_years_paid`, `dividend_consistency`, `dividend_cut`,
+  `fcf_dividend_coverage`, `dividend_class` (Reliable payer / Growing payer /
+  High-yield / Potential dividend trap / Deteriorating / Non-payer as a code with the
+  label in the reason). A missing dividend row is `missing`; only a reported zero is
+  "paid nothing".
+
+Rows go to `fundamental_metrics` next to #10's. `nse-analysis analytics compute
+valuation-metrics`.
+
+**Live** (`--as-of 2026-09-13`, 10 tickers with statements, 320 rows): P/E SCOM 14.7,
+BAT 10.7, BRIT 9.6, SBIC 8.1, KEGN 7.0, DTK 5.5, EQTY 5.3, KCB 4.5 (94.0 / 20.8); P/B
+SCOM 7.0 … KCB 0.91, KEGN 0.25; yields BAT 12.5 %, KEGN 8.2 %, SBIC 7.9 %, KCB 5.3 %;
+dividend classes: DTK/EQTY/SBIC/SCOM Growing payer, BAT Potential dividend trap (payout
+133 %), KEGN Potential dividend trap (yield 8.2 % with EPS falling), KCB Deteriorating
+(paid 4 of 5 years — the FY2023 gap); BKG and SCBK `missing` — their captured statements
+carry no EPS/DPS rows, so nothing is invented.
+
+Tests (16): hand-computed multiples (P/E 120/10, P/B, P/S, EV/EBITDA, yield, payout, FCF
+yield), market cap and EV from shares/debt/cash, negative denominators
+`not_meaningful`, stale price `unavailable`, `vs_history` from the ratios page with the
+minimum, `relative_to_group` median and minimum, reliable and growing payers, cut and
+stopped dividends → Deteriorating, missing dividend row `missing` not zero, high yield
+vs trap (payout > 100 % / falling EPS), FCF-coverage edge cases (nothing paid
+`not_meaningful`, negative FCF stays negative), bank `not_applicable` rules, **real KCB**
+(P/E 4.52 = 94.0 / 20.8, P/B 0.91 = 302.07 bn / 331.47 bn, yield 5.3 %, payout 24 %),
+the job (cross-sectional medians), CLI.
