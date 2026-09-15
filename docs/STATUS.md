@@ -811,3 +811,48 @@ Bull / Risk-on, the gap and the post-gap stale index → none, adaptive window, 
 as configuration), the Monte Carlo and scenario jobs (index not a target, N from config,
 idempotent, scenario rows with their assumptions), the regime job over 2008–2009 with
 the N20I fallback and the 2025 gap, CLI.
+
+## #17 Portfolio risk engine  ✅ 2026-09-15
+
+`services/analytics/portfolio/engine.py` for a hypothetical weight set (validated:
+positive, unique, summing to one within `PortfolioConfig.weight_tolerance`), from the
+positions' own in-segment daily returns over the 36M window ending at the date, aligned
+on common dates (≥ 100):
+
+- historical expected return and volatility (annualised), Sharpe (risk-free 12 %), max
+  drawdown of the constant-weight equity curve, beta to `^NASI`;
+- the pairwise correlation matrix and the average pairwise correlation;
+- concentration — HHI, effective positions (1 / HHI), top-3 weight; sector and
+  industry exposure from the point-in-time classification;
+- liquidity — days to liquidate each position at 20 % of its stored average daily
+  turnover on a KES 10 m notional (`unavailable` per position without turnover data);
+- warnings that say why: a single position over 25 %, a sector over 50 % ("N positions
+  are one bet on the sector, not N independent ones"), HHI over 0.25, average
+  correlation over 0.7, more than 10 days to liquidate, no turnover data.
+
+Any position without enough history makes the return / risk block `unavailable`
+naming it and the covered weight share; exposures, concentration and liquidity are
+still reported for what is known. `portfolio_analyses` (Alembic `20260914_0012`) keeps
+every analysis with its weights, metrics as Measure JSON, exposures, correlation,
+liquidity, warnings. CLI `portfolio analyse --weights KCB=0.2,EQTY=0.3,... [--as-of]
+[--name]`.
+
+**Live** (`--as-of 2024-12-31`, 36M window): `core-five` (KCB 25 / EQTY 25 / SCOM 30 /
+KEGN 10 / BAT 10): historical return −6.5 % a year, volatility 17.4 %, Sharpe −1.06 (at a
+12 % risk-free), max drawdown −52 %, average pairwise correlation 0.09, HHI 0.235
+(4.3 effective positions), 0.1–1.2 days to liquidate KES 10 m at 20 % of turnover,
+warning "SCOM is 30 % (limit 25 %)"; **beta `unavailable`** — the `^NASI` archive has no
+values between 2021-12-31 and 2022-06-02, so the 36M benchmark window crosses a gap and
+the row says so. `all-banks` (KCB / EQTY / ABSA / NCBA / COOP at 20 % each): +11.3 %,
+volatility 14.8 %, drawdown −25 %, correlation 0.15, and the warning "banking is 100 %
+of the portfolio across 5 position(s) — one bet on the sector, not 5 independent ones".
+`--as-of 2026-09-13`: every position "no series" for the window across the 2025 gap —
+metrics `unavailable`, coverage 0 %, nothing invented.
+
+Tests (7): the two-asset closed form (volatility, Sharpe, drawdown, correlation, HHI,
+days to liquidate, the single-position warning), beta against a benchmark and a
+single position, the all-bank portfolio (sector 100 %, five positions "one bet",
+average correlation warning, no HHI warning at equal weights), partial coverage with
+the missing names and observation counts, weight validation and parsing, the job on
+real prices (KCB / EQTY / SCOM as of 2019-12-31 with turnover from the liquidity job,
+a delisted KENO named as missing, invalid weights rejected), CLI.

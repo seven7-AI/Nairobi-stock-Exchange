@@ -495,6 +495,29 @@ class RegimeConfig(BaseModel):
     )
 
 
+class PortfolioConfig(BaseModel):
+    """Hypothetical-portfolio risk analysis."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Daily returns used for volatility, correlation, beta and drawdown (in-segment).
+    window: str = Field(default="36M", pattern=r"^(1|3|6|12|24|36)M$")
+    min_observations: int = Field(default=100, ge=20)
+    #: Weights must sum to one within this tolerance.
+    weight_tolerance: float = Field(default=0.001, ge=0.0, le=0.05)
+    #: Notional the liquidity figures assume, in KES.
+    notional: float = Field(default=10_000_000.0, gt=0.0)
+    #: Share of a stock's average daily turnover a liquidation may take per day.
+    adv_participation: float = Field(default=0.20, gt=0.0, le=1.0)
+    top_n: int = Field(default=3, ge=1)
+    # warnings
+    single_position_warning: float = Field(default=0.25, gt=0.0, le=1.0)
+    sector_warning: float = Field(default=0.50, gt=0.0, le=1.0)
+    hhi_warning: float = Field(default=0.25, gt=0.0, le=1.0)
+    correlation_warning: float = Field(default=0.70, gt=0.0, le=1.0)
+    days_to_liquidate_warning: float = Field(default=10.0, gt=0.0)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -515,6 +538,7 @@ class AnalyticsConfig(BaseModel):
     montecarlo: MonteCarloConfig = Field(default_factory=MonteCarloConfig)
     scenarios: ScenarioConfig = Field(default_factory=ScenarioConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
+    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -571,6 +595,7 @@ __all__ = [
     "MarketConfig",
     "MomentumConfig",
     "MonteCarloConfig",
+    "PortfolioConfig",
     "RankingConfig",
     "RegimeConfig",
     "RiskConfig",
