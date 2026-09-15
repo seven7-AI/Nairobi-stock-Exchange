@@ -856,3 +856,82 @@ average correlation warning, no HHI warning at equal weights), partial coverage 
 the missing names and observation counts, weight validation and parsing, the job on
 real prices (KCB / EQTY / SCOM as of 2019-12-31 with turnover from the liquidity job,
 a delisted KENO named as missing, invalid weights rejected), CLI.
+
+## #18 Backtesting engine  ✅ 2026-09-15
+
+`services/analytics/backtesting/engine.py` — a monthly-rebalanced top-N simulation
+with the three classic mistakes handled explicitly:
+
+- **look-ahead** — the signal is the live ranking pipeline recomputed in memory as of
+  each rebalance date (`backtesting/signals.py`: returns, momentum, risk, liquidity,
+  fundamentals, valuation multiples, factor scores, composite ranking on
+  `PriceSeries.as_of(date)` slices and point-in-time statements; the fundamentals and
+  valuation services were refactored into `fundamental_results` / `valuation_results`
+  so the job and the backtester share one implementation). Nothing is read from stored
+  metrics; the metric table per date is memoised so weight variants share it;
+- **survivorship** — a stock is a candidate only while listed (first observation ≤ date
+  ≤ last observation, last price within 14 days); a holding that delists is carried at
+  its last price and sold at that price on the next rebalance (`action = "exit"`);
+- **costs** — per-side fraction of traded value from `TransactionCosts` (brokerage
+  1.5 %, levies 0.45 %, half-spread 0.5 %, slippage 0.25 % → 2.7 % per side, all
+  configuration), buys scaled so costs come out of the cash deployed; a position is
+  capped at 20 % × 5 days × the stock's average daily turnover on a KES 10 m book, the
+  remainder stays in cash and the rebalance note says what was trimmed.
+
+The trading calendar is the union of the universe's dates; a break longer than the gap
+threshold ends a segment and the next one starts fresh — the 2025 gap is never
+bridged, `linked` compounds segments and says it ignored the gap. Per segment and per
+series (portfolio, `^NASI`, `^N20I`, and an equal-weight listed-universe run under the
+same calendar with zero costs): total return, CAGR, annualised return and volatility,
+Sharpe, Sortino, max drawdown, Calmar, monthly win rate, best / worst calendar year,
+average monthly one-way turnover; alpha (annualised, with its t-statistic), beta,
+information ratio and excess return against each benchmark from monthly returns (≥ 12).
+`backtest_runs` / `backtest_results` / `backtest_positions` / `backtest_equity`
+(Alembic `20260915_0013`). CLI `backtest run --from --to [--top-n] [--market-only]`,
+`backtest compare`, `backtest weight-search --from --split --to --candidate name=…`
+(in-sample pick by Sharpe, out-of-sample report, every run stored with its purpose).
+
+`--market-only` is a documented **control** (momentum 0.5 / risk 0.3 / liquidity 0.2):
+the model's fundamental factors only exist from 2022 (statements start FY2021), so
+before that the default model has no stock above the 50 % weight floor and holds cash —
+which the run reports rather than hides.
+
+**Live** — `backtest run --from 2013-01-01 --to 2024-12-31`, top 10, 2.7 % per side,
+KES 10 m, one segment (the union calendar has no gap before 2025), 144 rebalances;
+benchmarks measured on their longest continuous stretch because both index archives
+have a hole (N20I 2013-10/11 and both 2021-12-31 → 2022-06-02 — the rows say so):
+
+| series | total | CAGR | vol | Sharpe | MDD | alpha vs NASI (t) | beta | turnover / m | costs |
+|---|---|---|---|---|---|---|---|---|---|
+| `factor-model-v1` | −18.2 % | −1.7 % | 4.8 % | −2.81 | −28.9 % | −11.7 % (−7.6) | 0.17 | 1.7 % | KES 1.12 m |
+| `market-only` control | −56.6 % | −6.7 % | 12.0 % | −1.53 | −82.9 % | −13.9 % (−3.6) | 0.54 | 18.7 % | KES 10.9 m |
+| equal-weight universe (no costs) | +4.3 % | +0.3 % | 5.5 % | −2.10 | −44.9 % | | | | 0 |
+| `^NASI` (2013-01 → 2021-12 stretch) | +74.2 % | +6.3 % | 15.6 % | −0.29 | −36.8 % | | | | |
+| `^N20I` (longest stretch) | −62.1 % | −11.2 % | 12.7 % | −1.83 | −68.7 % | | | | |
+
+What the numbers say, honestly: the default model has nothing above the 50 % weight
+floor until FY2021 statements become visible on 2022-03-31, so it holds cash for nine
+years (return 0, Sharpe deeply negative against a 12 % risk-free) and then holds
+10–13 names a year with 1.7 % monthly turnover; its first buys (BAT, DTK, EQTY, JUB at
+10 %, CGEN trimmed to 0.9 % and HFCK to 2.7 % by the ADV cap) lose 18 % through 2024.
+The market-only control trades from 2013 (758 buys, 942 sells, one delisting exit),
+turns over 19 % a month and pays KES 10.9 m in costs on a KES 10 m book — more than
+its −57 % result: at NSE retail costs a monthly momentum rotation is a cost machine,
+which is the point of charging them. Neither beats holding NASI; the equal-weight
+universe without costs is flat. The run took 1 h 37 min (default) and 55 min
+(control) on the shared build box, 16–90 s per rebalance date depending on load.
+
+Tests (13): calendar, month ends and gap segments; point-in-time listing; a single
+stock's equity by hand with and without costs (first buy `notional / (1 + rate)`, no
+cost while holding); switching positions pays both sides and reports one-way turnover
+1.0; the ADV cap trims to `20 % × 5 d × turnover / equity` and leaves cash; a delisted
+holding is carried at its frozen last price and exits at it; a gap splits segments
+that each start fresh and link by compounding; metrics by hand (total return, CAGR,
+zero-vol Sharpe not meaningful, best / worst year, alpha 0 / beta 1 against itself,
+minimum months); **look-ahead mutation on the real fixture** — tripling every close
+and volume after 2019-06-30 leaves every trade, target and equity value on or before
+it byte-identical (and changes what follows); **survivorship on real data** — KENO,
+delisted 2019-10-11, is held and exits at its last close on 2019-10-31; the stored run
+(weights, costs, benchmarks, per-segment and linked results, positions with target
+weights, equity with benchmark levels, the equal-weight companion); the weight search
+(in-sample / out-of-sample runs by purpose, the ordering guard); CLI.

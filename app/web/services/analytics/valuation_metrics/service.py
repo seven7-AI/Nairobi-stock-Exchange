@@ -5,6 +5,7 @@ codegraph explore "compute_valuation_metrics valuation_metrics relative_to_group
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 
 from app.web.config import Settings
@@ -17,7 +18,9 @@ from app.web.services.analytics.classification.taxonomy import OPERATING_SECTORS
 from app.web.services.analytics.config import DEFAULT_CONFIG, AnalyticsConfig, register_calc_version
 from app.web.services.analytics.fundamentals.engine import FundamentalResult
 from app.web.services.analytics.fundamentals.service import fundamental_rows, load_statements
+from app.web.services.analytics.fundamentals.statements import StatementRow
 from app.web.services.analytics.returns.service import ComputeResult, load_universe
+from app.web.services.analytics.series import PriceSeries
 from app.web.services.analytics.valuation_metrics.engine import relative_to_group, valuation_metrics
 from app.web.services.market_data.sources.nse_scraper import NseScraperSource
 from app.web.utils.logger import get_logger
@@ -26,6 +29,66 @@ logger = get_logger(__name__)
 
 JOB_NAME = "valuation_metrics"
 RELATIVE_MULTIPLES = ("pe", "pb", "ps", "ev_ebitda", "dividend_yield")
+
+
+def valuation_results(
+    statements: Mapping[str, Sequence[StatementRow]],
+    universe: Mapping[str, PriceSeries],
+    index: ClassificationIndex,
+    day: date,
+    config: AnalyticsConfig,
+) -> tuple[dict[str, dict[str, FundamentalResult]], dict[str, str]]:
+    """Every instrument's valuation multiples and dividend metrics as of ``day``, with
+    the sector- and market-relative multiples - the step the job stores and the
+    backtester recomputes in memory."""
+    results: dict[str, dict[str, FundamentalResult]] = {}
+    skipped: dict[str, str] = {}
+    for ticker, rows in statements.items():
+        if not rows:
+            skipped[ticker] = "no financial statements captured"
+            continue
+        series = universe.get(ticker)
+        if series is None:
+            skipped[ticker] = "no price series"
+            continue
+        assignment = index.sector_for(ticker, day)
+        results[ticker] = valuation_metrics(
+            rows,
+            series.as_of(day),
+            day,
+            sector_code=assignment.sector_code if assignment else None,
+            config=config,
+        )
+    market = [
+        t
+        for t in results
+        if (a := index.sector_for(t, day)) is not None and a.sector_code in OPERATING_SECTORS
+    ]
+    for ticker, own in results.items():
+        peers = [p for p in index.peers_for(ticker, day) if p in results]
+        others = [m for m in market if m != ticker]
+        for metric in RELATIVE_MULTIPLES:
+            own[f"{metric}_vs_sector"] = FundamentalResult(
+                relative_to_group(
+                    own[metric].measure,
+                    [results[p][metric].measure for p in peers],
+                    name=f"{metric} vs sector",
+                    min_members=config.valuation.min_peers,
+                ),
+                own[metric].period_end,
+                own[metric].period_type,
+            )
+            own[f"{metric}_vs_market"] = FundamentalResult(
+                relative_to_group(
+                    own[metric].measure,
+                    [results[m][metric].measure for m in others],
+                    name=f"{metric} vs market",
+                    min_members=config.valuation.min_peers,
+                ),
+                own[metric].period_end,
+                own[metric].period_type,
+            )
+    return results, skipped
 
 
 def compute_valuation_metrics(
@@ -49,56 +112,13 @@ def compute_valuation_metrics(
             instruments = list(universe)
             requested = {t.strip().upper() for t in tickers} if tickers else set(instruments)
             statements = load_statements(source, instruments, config)
-            results: dict[str, dict[str, FundamentalResult]] = {}
-            skipped: dict[str, str] = {}
-            for ticker in instruments:
-                rows = statements.get(ticker, [])
-                if not rows:
-                    skipped[ticker] = "no financial statements captured"
-                    continue
-                assignment = index.sector_for(ticker, day)
-                results[ticker] = valuation_metrics(
-                    rows,
-                    universe[ticker].as_of(day),
-                    day,
-                    sector_code=assignment.sector_code if assignment else None,
-                    config=config,
-                )
-            market = [
-                t
-                for t in results
-                if (a := index.sector_for(t, day)) is not None
-                and a.sector_code in OPERATING_SECTORS
-            ]
+            results, skipped = valuation_results(statements, universe, index, day, config)
             written = 0
             processed: list[str] = []
             known: dict[str, int] = {}
             for ticker, own in results.items():
                 if ticker not in requested:
                     continue
-                peers = [p for p in index.peers_for(ticker, day) if p in results]
-                others = [m for m in market if m != ticker]
-                for metric in RELATIVE_MULTIPLES:
-                    own[f"{metric}_vs_sector"] = FundamentalResult(
-                        relative_to_group(
-                            own[metric].measure,
-                            [results[p][metric].measure for p in peers],
-                            name=f"{metric} vs sector",
-                            min_members=config.valuation.min_peers,
-                        ),
-                        own[metric].period_end,
-                        own[metric].period_type,
-                    )
-                    own[f"{metric}_vs_market"] = FundamentalResult(
-                        relative_to_group(
-                            own[metric].measure,
-                            [results[m][metric].measure for m in others],
-                            name=f"{metric} vs market",
-                            min_members=config.valuation.min_peers,
-                        ),
-                        own[metric].period_end,
-                        own[metric].period_type,
-                    )
                 written += upsert_fundamental_metrics(
                     session, fundamental_rows(ticker, day, own), calc_version_id=version.id
                 )
@@ -134,4 +154,9 @@ def compute_valuation_metrics(
     return ComputeResult(JOB_NAME, day, version_id, written, tuple(processed), skipped, known)
 
 
-__all__ = ["JOB_NAME", "RELATIVE_MULTIPLES", "compute_valuation_metrics"]
+__all__ = [
+    "JOB_NAME",
+    "RELATIVE_MULTIPLES",
+    "compute_valuation_metrics",
+    "valuation_results",
+]

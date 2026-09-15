@@ -9,6 +9,7 @@ the date, and sector-relative growth compares against peers evaluated the same w
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 
 from app.web.config import Settings
@@ -68,6 +69,44 @@ def load_statements(
     }
 
 
+def fundamental_results(
+    statements: Mapping[str, Sequence[StatementRow]],
+    index: ClassificationIndex,
+    day: date,
+    config: AnalyticsConfig,
+) -> tuple[dict[str, dict[str, FundamentalResult]], dict[str, str]]:
+    """Every instrument's fundamental metrics as of ``day``, sector-relative growth
+    included - the same step the job stores and the backtester recomputes in memory.
+
+    Returns (ticker -> metric -> result, ticker -> why it was skipped).
+    """
+    results: dict[str, dict[str, FundamentalResult]] = {}
+    skipped: dict[str, str] = {}
+    for ticker, rows in statements.items():
+        if not rows:
+            skipped[ticker] = "no financial statements captured"
+            continue
+        assignment = index.sector_for(ticker, day)
+        results[ticker] = fundamental_metrics(
+            rows, day, sector_code=assignment.sector_code if assignment else None, config=config
+        )
+    for ticker, own in results.items():
+        peers = [p for p in index.peers_for(ticker, day) if p in results]
+        for metric in RELATIVE_GROWTH:
+            peer_measures: list[Measure] = [results[p][metric].measure for p in peers]
+            own[f"{metric}_vs_sector"] = FundamentalResult(
+                sector_relative(
+                    own[metric].measure,
+                    peer_measures,
+                    name=f"{metric} vs sector",
+                    min_peers=config.fundamentals.min_peers,
+                ),
+                own[metric].period_end,
+                own[metric].period_type,
+            )
+    return results, skipped
+
+
 def compute_fundamentals(
     settings: Settings,
     source: NseScraperSource,
@@ -88,40 +127,13 @@ def compute_fundamentals(
             instruments = [i["ticker_symbol"] for i in source.fetch_instruments()]
             requested = {t.strip().upper() for t in tickers} if tickers else set(instruments)
             statements = load_statements(source, instruments, config)
-            # Every instrument's metrics are needed for the sector-relative ones.
-            results: dict[str, dict[str, FundamentalResult]] = {}
-            skipped: dict[str, str] = {}
-            for ticker in instruments:
-                rows = statements.get(ticker, [])
-                if not rows:
-                    skipped[ticker] = "no financial statements captured"
-                    continue
-                assignment = index.sector_for(ticker, day)
-                results[ticker] = fundamental_metrics(
-                    rows,
-                    day,
-                    sector_code=assignment.sector_code if assignment else None,
-                    config=config,
-                )
+            results, skipped = fundamental_results(statements, index, day, config)
             written = 0
             processed: list[str] = []
             known: dict[str, int] = {}
             for ticker, own in results.items():
                 if ticker not in requested:
                     continue
-                peers = [p for p in index.peers_for(ticker, day) if p in results]
-                for metric in RELATIVE_GROWTH:
-                    peer_measures: list[Measure] = [results[p][metric].measure for p in peers]
-                    own[f"{metric}_vs_sector"] = FundamentalResult(
-                        sector_relative(
-                            own[metric].measure,
-                            peer_measures,
-                            name=f"{metric} vs sector",
-                            min_peers=config.fundamentals.min_peers,
-                        ),
-                        own[metric].period_end,
-                        own[metric].period_type,
-                    )
                 written += upsert_fundamental_metrics(
                     session, fundamental_rows(ticker, day, own), calc_version_id=version.id
                 )
@@ -161,6 +173,7 @@ __all__ = [
     "JOB_NAME",
     "RELATIVE_GROWTH",
     "compute_fundamentals",
+    "fundamental_results",
     "fundamental_rows",
     "load_statements",
 ]

@@ -518,6 +518,47 @@ class PortfolioConfig(BaseModel):
     days_to_liquidate_warning: float = Field(default=10.0, gt=0.0)
 
 
+class TransactionCosts(BaseModel):
+    """Per-side costs as fractions of traded value. NSE retail: brokerage up to 1.5 %
+    (regulated maximum 1.8 % on small tickets), statutory levies about 0.45 % (CMA
+    0.12 %, NSE 0.24 %, CDSC 0.08 %, ICF 0.01 %), plus half the bid-ask spread and
+    slippage on thin names. Review before trusting any backtest."""
+
+    model_config = ConfigDict(frozen=True)
+
+    brokerage: float = Field(default=0.015, ge=0.0, le=0.1)
+    levies: float = Field(default=0.0045, ge=0.0, le=0.1)
+    half_spread: float = Field(default=0.005, ge=0.0, le=0.1)
+    slippage: float = Field(default=0.0025, ge=0.0, le=0.1)
+
+    @property
+    def rate(self) -> float:
+        return self.brokerage + self.levies + self.half_spread + self.slippage
+
+
+class BacktestConfig(BaseModel):
+    """Historical simulation of the ranking model."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Positions held after each rebalance (equal weight).
+    top_n: int = Field(default=10, ge=1)
+    #: Only stocks the model classifies at or above this rank band are eligible; "" = any
+    #: stock with a known overall score.
+    min_class: str = ""
+    costs: TransactionCosts = Field(default_factory=TransactionCosts)
+    #: Starting capital in KES; the ADV cap is in money terms, so it matters.
+    notional: float = Field(default=10_000_000.0, gt=0.0)
+    #: A position may not exceed participation x execution days x average daily turnover.
+    adv_participation: float = Field(default=0.20, gt=0.0, le=1.0)
+    execution_days: int = Field(default=5, ge=1)
+    #: Stocks whose last price is older than this at a rebalance are not bought.
+    max_price_age_days: int = Field(default=14, ge=1)
+    benchmarks: tuple[str, ...] = ("^NASI", "^N20I")
+    #: Monthly returns used for alpha / beta and win rates.
+    min_months_for_alpha: int = Field(default=12, ge=6)
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -539,6 +580,7 @@ class AnalyticsConfig(BaseModel):
     scenarios: ScenarioConfig = Field(default_factory=ScenarioConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -584,6 +626,7 @@ __all__ = [
     "CONFIG_VERSION",
     "DEFAULT_CONFIG",
     "AnalyticsConfig",
+    "BacktestConfig",
     "DataQualityConfig",
     "FactorConfig",
     "FactorDefinition",
@@ -601,6 +644,7 @@ __all__ = [
     "RiskConfig",
     "ScenarioAssumptions",
     "ScenarioConfig",
+    "TransactionCosts",
     "ValuationConfig",
     "register_calc_version",
 ]

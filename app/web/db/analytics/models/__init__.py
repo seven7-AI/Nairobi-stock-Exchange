@@ -10,6 +10,12 @@ as they arrive (metrics, factor scores, valuations, forecasts, backtests).
 from __future__ import annotations
 
 from app.web.db.analytics.base import AnalyticsBase
+from app.web.db.analytics.models.backtest import (
+    BacktestEquity,
+    BacktestPosition,
+    BacktestResult,
+    BacktestRun,
+)
 from app.web.db.analytics.models.calc_version import CalcVersion
 from app.web.db.analytics.models.classification import Classification
 from app.web.db.analytics.models.correlation import Correlation
@@ -27,6 +33,10 @@ from app.web.db.analytics.models.valuation import Valuation
 
 __all__ = [
     "AnalyticsBase",
+    "BacktestEquity",
+    "BacktestPosition",
+    "BacktestResult",
+    "BacktestRun",
     "CalcVersion",
     "Classification",
     "Correlation",
