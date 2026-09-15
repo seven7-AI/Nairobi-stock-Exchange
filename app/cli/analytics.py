@@ -743,4 +743,109 @@ def backtest_weight_search_command(
     console.print("* = best in-sample Sharpe; judge it by the out-of-sample columns")
 
 
+jobs_app = typer.Typer(help="The live pipelines: daily, fundamentals, weekly; and their status.")
+analytics_app.add_typer(jobs_app, name="jobs")
+
+
+def _run_pipeline_command(name: str, as_of: str | None, force: bool) -> None:
+    from app.web.services.jobs import run_pipeline
+
+    settings, source = _scraper_source()
+    result = run_pipeline(settings, source, name, as_of=_parse_day(as_of), force=force)
+    table = Table(title=f"pipeline {name} as of {result.as_of} (run {result.run_id})")
+    for column in ("Step", "Status", "Rows", "Seconds", "Reason"):
+        table.add_column(column, justify="right" if column in ("Rows", "Seconds") else "left")
+    for step in result.steps:
+        table.add_row(
+            step.name, step.status, str(step.rows_written), f"{step.seconds:.1f}", step.reason or ""
+        )
+    console.print(table)
+    console.print("counts: " + ", ".join(f"{k} {v}" for k, v in sorted(result.counts.items())))
+    if not result.succeeded:
+        raise typer.Exit(code=1)
+
+
+@jobs_app.command("daily")
+def jobs_daily_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (default today)"),
+    force: bool = typer.Option(
+        False, "--force", help="Re-run steps even when inputs are unchanged"
+    ),
+) -> None:
+    """After the scrape: quality, returns, momentum, risk, liquidity, multiples, factors,
+    rankings, fair value, scenarios."""
+    _run_pipeline_command("daily", as_of, force)
+
+
+@jobs_app.command("fundamentals")
+def jobs_fundamentals_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (default today)"),
+    force: bool = typer.Option(
+        False, "--force", help="Re-run steps even when inputs are unchanged"
+    ),
+) -> None:
+    """When statements change: fundamentals, multiples, factors, rankings, fair value."""
+    _run_pipeline_command("fundamentals", as_of, force)
+
+
+@jobs_app.command("weekly")
+def jobs_weekly_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (default today)"),
+    force: bool = typer.Option(
+        False, "--force", help="Re-run steps even when inputs are unchanged"
+    ),
+) -> None:
+    """Regime, forecasts and their evaluation, Monte Carlo, factors, rankings."""
+    _run_pipeline_command("weekly", as_of, force)
+
+
+@jobs_app.command("status")
+def jobs_status_command() -> None:
+    """Last run per job, last update per table, open findings, model versions."""
+    from app.web.services.jobs import job_status
+
+    settings = _settings()
+    status = job_status(settings)
+    console.print(
+        f"analytics store {settings.analytics_db_path}: revision {status.revision} "
+        f"(head {status.head}) · open data-quality findings {status.open_findings}"
+    )
+    tables = Table(title="tables")
+    tables.add_column("Table")
+    tables.add_column("Rows", justify="right")
+    tables.add_column("Last update")
+    for name, count in sorted(status.tables.items()):
+        tables.add_row(name, str(count), status.last_update.get(name) or "-")
+    console.print(tables)
+    jobs = Table(title="last run per job")
+    for column in ("Job", "Status", "As of", "Started", "Rows", "Detail"):
+        jobs.add_column(column, justify="right" if column == "Rows" else "left")
+    for job in status.jobs:
+        detail = job.error or ", ".join(
+            f"{k} {v}"
+            for k, v in job.details.items()
+            if k in ("counts", "processed", "skipped", "scored", "reason")
+        )
+        jobs.add_row(
+            job.job_name,
+            job.status,
+            job.as_of or "-",
+            job.started_at.strftime("%Y-%m-%d %H:%M"),
+            str(job.rows_written),
+            detail[:80],
+        )
+    console.print(jobs)
+    for job in status.jobs:
+        console.print(
+            f"{job.job_name}: {job.status} as of {job.as_of or '-'} rows {job.rows_written}",
+            soft_wrap=True,
+        )
+    models = Table(title="model registry")
+    for column in ("Model", "Version", "Kind", "Status"):
+        models.add_column(column)
+    for m in status.models:
+        models.add_row(m["name"], m["version"], m["kind"], m["status"])
+    console.print(models)
+
+
 __all__ = ["analytics_app"]
