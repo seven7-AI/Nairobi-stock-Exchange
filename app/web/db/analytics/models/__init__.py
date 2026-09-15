@@ -20,6 +20,7 @@ from app.web.db.analytics.models.fundamental_metric import FundamentalMetric
 from app.web.db.analytics.models.job_run import JobRun, JobStatus
 from app.web.db.analytics.models.market_metric import MarketMetric
 from app.web.db.analytics.models.model_registry import ModelKind, ModelRegistryEntry, ModelStatus
+from app.web.db.analytics.models.simulation import Regime, Simulation
 from app.web.db.analytics.models.stock_ranking import StockRanking
 from app.web.db.analytics.models.valuation import Valuation
 
@@ -39,7 +40,9 @@ __all__ = [
     "ModelKind",
     "ModelRegistryEntry",
     "ModelStatus",
+    "Regime",
     "Severity",
+    "Simulation",
     "StockRanking",
     "Valuation",
 ]

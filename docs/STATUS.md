@@ -745,3 +745,69 @@ gap, not yet elapsed), compute-then-evaluate only when elapsed (1M / 3M at 2020-
 all four by 2021-01-31, no duplicates, second run a no-op), quarterly walk-forward
 2016–2019 with registry performance and per-origin provenance, an unregistered
 candidate stays `unavailable` and `candidate`, CLI.
+
+## #16 Monte Carlo, scenario and regime engines  ✅ 2026-09-15
+
+**Monte Carlo** (`services/analytics/montecarlo/engine.py`) — seeded price paths from
+the stock's own in-segment daily log returns over the 36M window ending at the origin
+(≥ 250 returns): `bootstrap` (iid resampling) and `block_bootstrap` (21-day circular
+blocks, keeps volatility clustering), 10,000 paths by default (`MonteCarloConfig`, seed
+20260914 + horizon), horizons 21 / 63 / 126 / 252 days. Per run: terminal-return
+quantiles q05–q95, mean, P(positive), P(return > −20 / −10 / 0 / +10 / +25 %),
+P(max drawdown within the horizon > 10 / 20 / 30 %) measured on the paths, expected max
+drawdown. The same inputs, config and seed reproduce the same numbers; nothing is
+assumed about the distribution beyond "the sampled past". No `arch`/GARCH: the block
+bootstrap is the volatility-clustering variant and is stated as such.
+
+**Scenarios** (`services/analytics/scenarios/engine.py`) — `ScenarioConfig` states
+bear / base / bull in full (NASI −25 % / +8 % / +25 %, multiples −20 / 0 / +15 %,
+earnings −10 / +5 / +15 %, volatility ×1.5 / 1 / 0.8, a description). For each stock
+the one-year implied price is computed on a **beta path** (price × (1 + β × market
+move), β = stored `beta_12m` or the default 1, said which) and, when the stock has a
+positive P/E on the date, a **fundamental path** (EPS × (1+g) × P/E × (1+Δmultiple));
+the implied return is the mean of the paths used. The row stores the scenario's
+assumptions verbatim next to the result. Arithmetic on stated assumptions, not a
+forecast.
+
+**Regime** (`services/analytics/regime/engine.py`) — on `^NASI` (falling back to
+`^N20I` for dates NASI cannot cover; the row names its index): trend from the price
+against its 200-day average and the 6-month return (Bull / Bear / Sideways, ±5 %
+band), volatility from the 63-day annualised volatility against the median of the same
+measure over the reference window (High-vol > 1.25×, Low-vol < 0.75×), risk-on /
+risk-off / neutral, the evidence (every number) and the **proposed** factor-weight
+overrides (`RegimeConfig.weight_overrides`, recorded for the backtester to evaluate —
+applied nowhere by default). The reference window is the 36M span, or the whole segment
+containing the date when the index is younger than that or the span would cross a data
+gap; a stale end or a short post-gap segment yields no regime.
+
+`simulations` (Monte Carlo rows and `method = "scenario"` rows) and `regimes` (Alembic
+`20260914_0011`). CLI `compute montecarlo`, `compute scenarios`, `compute regime
+[--as-of | --from --to]`.
+
+**Live** — Monte Carlo `--as-of 2024-12-31`: 85 instruments, 680 rows, 248 known per
+method (62 stocks with ≥ 250 in-window returns); KCB 1-year bootstrap: mean +1.8 %,
+q05 −41 %, q95 +61 %, P(positive) 0.46, P(drawdown > 20 %) 0.79; block bootstrap wider
+(q95 +82 %, P(dd > 20 %) 0.91). `--as-of 2026-09-13`: 712 rows, all `unavailable` (the
+window crosses the 2025 gap). Scenarios 2024-12-31: KCB β 0.92 → bear 31.0 / base 44.2 /
+bull 53.1 vs 41.6 (−26 % / +6 % / +28 %), SCOM β 1.76 → 10.9 / 18.7 / 23.6 vs 17.05;
+2026-09-13: 180 rows on the default β (no stored beta across the gap). Regime, monthly
+2008-01 → 2024-12 (204 dates): 2008-08 → 2009-05 **Bear**, High-vol from 2008-10 to
+2009-01 (on `^N20I`, NASI starts 2008-02-25); 2020-03 → 2020-07 **Bear / High-vol /
+Risk-off**; 2022-01 → 2022-08 `unavailable` (the NASI archive has no values between
+2021-12-31 and 2022-06-02, then too short a segment); 2024-12-31 Bull / Normal /
+Risk-on on the post-gap segment; 2026-09-13 `unavailable` (621-day-stale index). Bull
+90 dates, Bear 60, Sideways 37, unavailable 17.
+
+Tests (11): seeded and shaped paths (every step is a sampled return; unknown method
+raises), block bootstrap keeps contiguous blocks, path statistics by hand, quantile
+convergence in N (40k vs 500 paths, seed noise < 0.01, q05/q95 in the analytic
+neighbourhood), KCB simulation (ordered quantiles, probability keys, monotone drawdown
+probabilities, byte-identical re-run, month narrower than year, gap → unavailable,
+N/seed as configuration), scenario arithmetic with verbatim assumptions (beta and
+fundamental paths, default beta, loss-making, no price, custom scenario), regime weight
+renormalisation, regime labels (young NASI → unavailable with the count, N20I 2008-12
+Bear / High-vol, NASI 2020-04 Bear / High-vol / Risk-off with vol ratio > 1.25, 2017-12
+Bull / Risk-on, the gap and the post-gap stale index → none, adaptive window, threshold
+as configuration), the Monte Carlo and scenario jobs (index not a target, N from config,
+idempotent, scenario rows with their assumptions), the regime job over 2008–2009 with
+the N20I fallback and the 2025 gap, CLI.

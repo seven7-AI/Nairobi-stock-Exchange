@@ -398,6 +398,103 @@ class ForecastConfig(BaseModel):
     ar1_max_phi: float = Field(default=0.95, gt=0.0, lt=1.0)
 
 
+class MonteCarloConfig(BaseModel):
+    """Monte Carlo simulation of price paths from historical daily log returns."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Simulated paths per run; the quantiles converge as this grows.
+    n_paths: int = Field(default=10_000, ge=100, le=1_000_000)
+    seed: int = Field(default=20260914, ge=0)
+    #: Horizons in trading days (21 = one month, 252 = one year).
+    horizons_days: tuple[int, ...] = (21, 63, 126, 252)
+    #: iid bootstrap of daily log returns, and a block bootstrap that keeps volatility
+    #: clustering (blocks of ``block_days``).
+    methods: tuple[str, ...] = ("bootstrap", "block_bootstrap")
+    block_days: int = Field(default=21, ge=2)
+    #: Daily returns used, in-segment, ending at the origin.
+    lookback_window: str = Field(default="36M", pattern=r"^(1|3|6|12|24|36)M$")
+    min_observations: int = Field(default=250, ge=50)
+    #: P(return > x) reported for these thresholds.
+    return_thresholds: tuple[float, ...] = (-0.20, -0.10, 0.0, 0.10, 0.25)
+    #: P(max drawdown within the horizon > x) reported for these thresholds.
+    drawdown_thresholds: tuple[float, ...] = (0.10, 0.20, 0.30)
+
+
+class ScenarioAssumptions(BaseModel):
+    """One named what-if: a market move, a multiple change and an earnings change."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    market_return: float
+    multiple_change: float
+    earnings_growth: float
+    volatility_multiplier: float = Field(default=1.0, gt=0.0)
+    description: str = ""
+
+
+class ScenarioConfig(BaseModel):
+    """Bear / base / bull scenario sets over one year, stated in full."""
+
+    model_config = ConfigDict(frozen=True)
+
+    horizon_days: int = Field(default=252, ge=21)
+    scenarios: tuple[ScenarioAssumptions, ...] = (
+        ScenarioAssumptions(
+            name="bear",
+            market_return=-0.25,
+            multiple_change=-0.20,
+            earnings_growth=-0.10,
+            volatility_multiplier=1.5,
+            description="NASI -25% (2008 / 2020 scale), multiples compress 20%, earnings -10%",
+        ),
+        ScenarioAssumptions(
+            name="base",
+            market_return=0.08,
+            multiple_change=0.0,
+            earnings_growth=0.05,
+            description="NASI +8%, multiples flat, earnings +5%",
+        ),
+        ScenarioAssumptions(
+            name="bull",
+            market_return=0.25,
+            multiple_change=0.15,
+            earnings_growth=0.15,
+            volatility_multiplier=0.8,
+            description="NASI +25%, multiples expand 15%, earnings +15%",
+        ),
+    )
+    default_beta: float = Field(default=1.0, gt=0.0)
+
+
+class RegimeConfig(BaseModel):
+    """Market-regime detection on the benchmark index and the weight overrides it
+    proposes (recorded, then evaluated by the backtester - never assumed)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    index: str = "^NASI"
+    #: Used for dates the primary index cannot cover (NASI starts 2008-02; N20I 2007).
+    fallback_index: str = "^N20I"
+    trend_ma_days: int = Field(default=200, ge=20)
+    trend_return_window: str = Field(default="6M", pattern=r"^(1|3|6|12|24|36)M$")
+    #: 6M return beyond +/- this is a trend; inside it is sideways.
+    trend_threshold: float = Field(default=0.05, ge=0.0)
+    vol_window_days: int = Field(default=63, ge=10)
+    vol_reference_window: str = Field(default="36M", pattern=r"^(1|3|6|12|24|36)M$")
+    high_vol_ratio: float = Field(default=1.25, gt=1.0)
+    low_vol_ratio: float = Field(default=0.75, gt=0.0, lt=1.0)
+    #: regime -> factor -> additive weight change, applied then renormalised.
+    weight_overrides: dict[str, dict[str, float]] = Field(
+        default_factory=lambda: {
+            "Bear": {"quality": 0.10, "risk": 0.10, "momentum": -0.10, "value": -0.05},
+            "Bull": {"momentum": 0.10, "growth": 0.05, "risk": -0.05},
+            "High-vol": {"risk": 0.10, "liquidity": 0.05, "momentum": -0.05},
+        }
+    )
+
+
 class AnalyticsConfig(BaseModel):
     """The whole configuration. Frozen, hashable, versioned."""
 
@@ -415,6 +512,9 @@ class AnalyticsConfig(BaseModel):
     ranking: RankingConfig = Field(default_factory=RankingConfig)
     fair_value: FairValueConfig = Field(default_factory=FairValueConfig)
     forecast: ForecastConfig = Field(default_factory=ForecastConfig)
+    montecarlo: MonteCarloConfig = Field(default_factory=MonteCarloConfig)
+    scenarios: ScenarioConfig = Field(default_factory=ScenarioConfig)
+    regime: RegimeConfig = Field(default_factory=RegimeConfig)
 
     def canonical_json(self) -> str:
         """Deterministic JSON: sorted keys, no whitespace, so equal configs hash equal."""
@@ -470,8 +570,12 @@ __all__ = [
     "LiquidityConfig",
     "MarketConfig",
     "MomentumConfig",
+    "MonteCarloConfig",
     "RankingConfig",
+    "RegimeConfig",
     "RiskConfig",
+    "ScenarioAssumptions",
+    "ScenarioConfig",
     "ValuationConfig",
     "register_calc_version",
 ]
