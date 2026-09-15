@@ -313,6 +313,28 @@ class NseScraperSource:
             for row in rows
         }
 
+    def input_watermarks(self) -> dict[str, str]:
+        """A cheap fingerprint per input table - ``max key:row count`` - so a job can
+        tell whether anything it reads has changed since it last ran."""
+        marks: dict[str, str] = {}
+        with self._connect() as connection:
+            if self._table_exists(connection, OBSERVATIONS_TABLE):
+                row = connection.execute(
+                    f"SELECT MAX(trade_date), COUNT(*) FROM {OBSERVATIONS_TABLE}"
+                ).fetchone()
+                marks["observations"] = f"{row[0]}:{int(row[1] or 0)}"
+            if self._table_exists(connection, FINANCIAL_STATEMENTS_TABLE):
+                row = connection.execute(
+                    f"SELECT MAX(first_seen_at), COUNT(*) FROM {FINANCIAL_STATEMENTS_TABLE}"
+                ).fetchone()
+                marks["statements"] = f"{row[0]}:{int(row[1] or 0)}"
+            if self._table_exists(connection, FUNDAMENTAL_SNAPSHOTS_TABLE):
+                row = connection.execute(
+                    f"SELECT MAX(snapshot_date), COUNT(*) FROM {FUNDAMENTAL_SNAPSHOTS_TABLE}"
+                ).fetchone()
+                marks["snapshots"] = f"{row[0]}:{int(row[1] or 0)}"
+        return marks
+
     # -- fundamentals (point-in-time) ---------------------------------------
     def has_financial_statements(self) -> bool:
         with self._connect() as connection:

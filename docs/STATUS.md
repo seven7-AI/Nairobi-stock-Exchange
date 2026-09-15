@@ -935,3 +935,58 @@ delisted 2019-10-11, is held and exits at its last close on 2019-10-31; the stor
 (weights, costs, benchmarks, per-segment and linked results, positions with target
 weights, equity with benchmark levels, the equal-weight companion); the weight search
 (in-sample / out-of-sample runs by purpose, the ordering guard); CLI.
+
+## #19 Job runner, cron and observability  ✅ 2026-09-15
+
+`services/jobs/runner.py` — dependency-ordered pipelines of steps, each step calling the
+same service the CLI command calls and recording a `job_runs` row `step:<name>` with a
+**fingerprint** of its inputs: the source tables it reads (`NseScraperSource.
+input_watermarks()` — `MAX(key):COUNT(*)` per table), the config hash, the date and the
+fingerprints of the steps it depends on. A step whose fingerprint equals its last
+succeeded run for the date is skipped ("inputs unchanged"); a failed step stops the
+steps that depend on it, records the error, and the next run resumes from it; `--force`
+re-runs everything and, because every service upserts on its natural key, yields the
+same row counts. `services/jobs/pipelines.py` defines `daily` (data quality → returns →
+momentum → risk → liquidity → valuation multiples → factors → rankings → fair value →
+scenarios), `fundamentals` (fundamentals → multiples → factors → rankings → fair value;
+skips itself unless statements changed) and `weekly` (regime → forecasts → forecast
+evaluation, which always runs → Monte Carlo → factors → rankings).
+
+`nse-analysis analytics jobs daily | fundamentals | weekly [--as-of] [--force]` and
+`jobs status` (store revision, rows and last update per table, last run per job with
+its counts, open data-quality findings, the model registry).
+`scripts/install_analytics_cron.sh` appends (never rewrites) three entries after the
+scraper's 09:00 Africa/Nairobi job — 09:40 daily, 10:10 fundamentals, Saturdays 10:30
+weekly — running `scripts/run_analytics_jobs.sh`, which upgrades the store, runs the
+pipeline and logs START / OK / FAILED to `reports/analytics-jobs.log`; `--print` shows
+the entries, `--verify` exits 1 when one is missing. The same pipelines are Celery
+tasks (`analytics_tasks.py`, queue `reports`), on beat only when `CELERY_BEAT_ENABLED`.
+Analytics SQLite connections now wait up to 120 s for the writer (`BUSY_TIMEOUT_SECONDS`)
+instead of failing "database is locked" while a job writes. `docs/quant-engine.md` is the
+operator guide.
+
+**Live** — cron installed (`crontab -l`: `CRON_TZ=Africa/Nairobi`, the scraper's `0 09`,
+then `40 09 … daily`, `10 10 … fundamentals`, `30 10 * * 6 … weekly`; `--verify` passes;
+the installed copy is `deployment/cron/analytics-cron.installed`) and the first runs
+made through the cron runner on the shared build box (load 10–20):
+
+| pipeline | wall | steps |
+|---|---|---|
+| `daily` (first) | 18 m 46 s | data quality 63 s (48 new info findings: `missing_fundamentals` for the instruments the statement rotation has not reached, `thin_history`), returns 77 s, momentum 89 s, **risk 407 s** (peer correlations for every sector), liquidity 81 s, valuation multiples 99 s, factors 3 s, rankings 1 s, fair value 112 s, scenarios 104 s — 7,458 rows |
+| `fundamentals` | 6 m 12 s | fundamentals 66 s, multiples 88 s, factors, rankings, fair value 57 s |
+| `weekly` | 6 m 18 s | regime 10 s, forecasts 50 s (1,424 rows), forecast evaluation 78 s (0 elapsed yet), Monte Carlo 138 s (712 rows), factors, rankings |
+| `daily` (again) | 2 m 00 s | every step `skipped` — "inputs unchanged" (the second attempt recomputed the steps shared with the other pipelines; the fix — any prior succeeded run with the same fingerprint counts, not only the latest — is in this commit, and the third run skipped all ten) |
+
+`jobs status` lists 26 tables with their row counts and last update, the last run of
+every job and step (`pipeline:daily … succeeded`, `step:risk … succeeded`), 319 open
+data-quality findings (1 error, 217 warning, 101 info) and the five registered models.
+Every run is in `reports/analytics-jobs.log` as START / OK.
+
+Tests (8): the daily pipeline on the real fixture twice — identical row counts, every
+step skipped the second time with "inputs unchanged", `--force` reruns with the same
+counts, the pipeline rows and the step rows carry the fingerprints; a new statement row
+makes the `fundamentals` pipeline rerun; a simulated mid-run failure stops the
+dependents, records the error, resumes without duplicates; `always_run` steps never
+skip; `job_status` reports tables, jobs and models; CLI (`jobs fundamentals` twice,
+`jobs status`, a failing pipeline exits 1); the Celery task runs the same pipeline
+eagerly and skips on the second call; the cron script prints the chained entries.

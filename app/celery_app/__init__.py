@@ -18,6 +18,7 @@ celery_app.autodiscover_tasks(
         "app.celery_app.tasks.report_tasks",
         "app.celery_app.tasks.ingest_tasks",
         "app.celery_app.tasks.email_tasks",
+        "app.celery_app.tasks.analytics_tasks",
     ],
     force=True,
 )

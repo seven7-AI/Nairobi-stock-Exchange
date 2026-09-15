@@ -43,6 +43,7 @@ task_routes: dict[str, dict[str, str]] = {
     "app.celery_app.tasks.report_tasks.*": {"queue": "reports"},
     "app.celery_app.tasks.ingest_tasks.*": {"queue": "ingest"},
     "app.celery_app.tasks.email_tasks.*": {"queue": "email"},
+    "app.celery_app.tasks.analytics_tasks.*": {"queue": "reports"},
 }
 
 #: Mirrors the cron times the GitHub Actions workflows use, so switching from
@@ -63,6 +64,21 @@ _BEAT_SCHEDULE: dict[str, dict[str, Any]] = {
     "ingest-latest-prices": {
         "task": "app.celery_app.tasks.ingest_tasks.ingest_latest_prices",
         "schedule": crontab(hour=18, minute=30),
+    },
+    # The analytics pipelines mirror scripts/install_analytics_cron.sh (09:40 / 10:10
+    # daily, Saturdays 10:30 Africa/Nairobi = UTC+3). Cron is the deployed path; these
+    # run only when beat is on, so the two never double-run.
+    "analytics-daily": {
+        "task": "app.celery_app.tasks.analytics_tasks.scheduled_daily_analytics",
+        "schedule": crontab(hour=6, minute=40),
+    },
+    "analytics-fundamentals": {
+        "task": "app.celery_app.tasks.analytics_tasks.scheduled_fundamentals_analytics",
+        "schedule": crontab(hour=7, minute=10),
+    },
+    "analytics-weekly": {
+        "task": "app.celery_app.tasks.analytics_tasks.scheduled_weekly_analytics",
+        "schedule": crontab(hour=7, minute=30, day_of_week=6),
     },
 }
 

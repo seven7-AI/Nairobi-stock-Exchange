@@ -1,0 +1,4 @@
+CRON_TZ=Africa/Nairobi
+40 09 * * * cd /home/kevin/Nairobi-stock-Exchange && bash scripts/run_analytics_jobs.sh daily
+10 10 * * * cd /home/kevin/Nairobi-stock-Exchange && bash scripts/run_analytics_jobs.sh fundamentals
+30 10 * * 6 cd /home/kevin/Nairobi-stock-Exchange && bash scripts/run_analytics_jobs.sh weekly
