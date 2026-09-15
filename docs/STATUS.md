@@ -1036,3 +1036,62 @@ sort); the forecast fan (bands, median, 12M note) and the backtest figure (segme
 break drawn as a gap) and the portfolio figure (heat map + scatter); the store loaders
 on a populated fixture store (sector medians exclude indices, ranking order, KCB fan at
 54.0 with four horizons) and `plot all` writing every folder with real PNGs; CLI.
+
+
+## #21 Research API and profile  ✅ 2026-09-15
+
+`services/analytics/research/profile.py` — `build_profile(settings, ticker, as_of)`
+assembles everything the store holds about an instrument, from the store only:
+identity (point-in-time sector / industry, classification source), the data as-of
+per table, the score block (`stock_rankings`: overall with status, confidence,
+classification, ranks, value-trap risk, compounder, the explanation JSON), the
+factor scores with coverage and percentiles, eight metric blocks (returns, momentum,
+risk, liquidity, quality, growth, value, dividend — each stored metric as its Measure
+JSON `{value, status, reason}`, and a metric never computed for the date present as
+`unavailable` with that reason), the blended and per-method valuation with
+assumptions, forecasts per model and horizon, scenarios, simulations, the latest
+market regime, the model registry, a disclaimer and notes ("no statements captured").
+`render_profile` prints it one number per line with its status — the §46 profile —
+via `nse-analysis analytics research TICKER [--as-of] [--json]`.
+
+`app/web/api/routers/research/` (RBAC `RESEARCH_ROLES`: platform_admin, org_admin,
+analyst, portfolio_manager, trader, research_viewer; `client` gets 403): `GET
+/research/stocks` (every classified instrument with its latest ranking summary,
+cursor-paginated by ticker), `/research/stocks/{ticker}` (the full profile),
+`/{ticker}/metrics | valuation | forecast | risk | factors` (blocks of it),
+`/{ticker}/history` (the stored ranking per evaluation date), `/research/rankings`
+(a date's table, best first, unscored last with reasons, paginated),
+`/research/sectors` (median of a stored metric per sector), `/research/backtests`
+(stored runs with headline metrics). The store is read in the threadpool; nothing is
+computed on request; an unknown ticker is 404 with a message.
+
+Live (`nse-analysis analytics research KCB`, store as of 2026-09-15, 115 lines): KCB,
+Banking / Commercial Banks, score 55.23 (factor-model v1, confidence 0.65) → **Watch**,
+ranks market 7 · sector 3 · industry 3, value-trap risk medium (cheap on P/E −49 % vs the
+market, P/B 0.89, negative FCF), compounder 77.8 (7/9 criteria). Returns 1d −1.86 %,
+1w −6.35 %, 1m +5.73 %; every window of three months or more is `unavailable` naming
+the 2024-12-31 → 2026-07-26 gap (572 d), as are MA50/200, volatility, beta, Sharpe and
+the liquidity block; market cap KES 296.4 bn. Quality ROE 22.0 %, ROA 3.25 %, net margin
+38.5 %, D/E 0.29, gross / operating margin, interest coverage and asset turnover
+`not_applicable` (financial company); growth revenue +5.6 %, EPS +11.2 %, 3-y CAGR
+revenue 14.2 % / EPS 18.1 %, 5-y `unavailable` (history starts FY2021). Value P/E 4.44
+(TTM 4.15), P/B 0.89, P/S 1.71, P/E −36 % vs sector, −49 % vs market; dividend yield
+5.42 % (TTM 6.50 %), payout 24 %, 4 years paid, 3-y dividend CAGR 35.7 %. Valuation
+intrinsic 99.56 (range 67.55–126.21, DDM 61.11, P/B–ROE 138.01) vs price 92.25 → upside
++7.9 %, uncertainty 0.45, actionable. Forecasts `unavailable` for all four models (2
+contiguous monthly returns, minimum 36); scenarios base +6.5 % / bear −26.5 % / bull
++28.6 %; regime `unavailable` (^NASI last observed 2024-12-31, 623 days stale). Models:
+ar1 / ewma / mean / naive v1 active, factor-model v1 candidate. `--json` emits the same
+profile as the API's `GET /research/stocks/KCB`.
+
+Tests: integration — every allowed role reads all eleven endpoints, `client` is 403
+everywhere, unknown tickers are 404, the KCB profile carries statuses and reasons
+(momentum known, ROE `unavailable` with "not computed", the overall score
+`unavailable` naming the 30 % weight share, forecasts and regime present), the block
+endpoints, history, pagination of stocks / rankings, sectors, the empty backtest list,
+a rejected metric name (422), unauthenticated 401; unit — `metric_block` marks missing
+rows, the profile from a populated store (as-of dates, bank `not_applicable` margins,
+5-y CAGR `unavailable`, valuation methods P/B–ROE + DDM, scenarios' assumptions,
+forecasts absent from the daily pipeline, a delisted instrument's notes, an earlier
+as-of with nothing stored), `render_profile`, CLI (`research KCB`, `--json`, unknown
+ticker exits 1).
