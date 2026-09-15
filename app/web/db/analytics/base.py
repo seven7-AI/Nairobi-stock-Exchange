@@ -50,6 +50,10 @@ class AnalyticsBase(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+#: How long a connection waits for the writer lock before giving up.
+BUSY_TIMEOUT_SECONDS = 120
+
+
 def analytics_url(db_path: Path) -> str:
     """SQLAlchemy URL for the analytics SQLite file."""
     return f"sqlite+pysqlite:///{db_path}"
@@ -62,13 +66,18 @@ def _apply_pragmas(dbapi_connection: Any, _record: Any) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_SECONDS * 1000}")
     cursor.close()
 
 
 def build_analytics_engine(db_path: Path) -> Engine:
     """A fresh engine for ``db_path``; the parent directory is created."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(analytics_url(db_path), future=True)
+    # A job can hold the single SQLite writer for minutes; a CLI command started
+    # meanwhile waits instead of failing with "database is locked".
+    engine = create_engine(
+        analytics_url(db_path), future=True, connect_args={"timeout": BUSY_TIMEOUT_SECONDS}
+    )
     event.listen(engine, "connect", _apply_pragmas)
     return engine
 

@@ -8,6 +8,7 @@ Thin wrappers, like the rest of the CLI: every command calls a service in
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 
 import typer
@@ -552,6 +553,194 @@ def portfolio_analyse_command(
         console.print(f"[yellow]warning[/yellow] {warning}")
     if not a.expected_return.is_known:
         console.print(f"[red]{a.expected_return.reason}[/red]")
+
+
+backtest_app = typer.Typer(help="Historical simulation of the ranking model.")
+analytics_app.add_typer(backtest_app, name="backtest")
+
+
+def _print_backtest(result: object) -> None:
+    import json
+
+    headline = result.headline()  # type: ignore[attr-defined]
+    for block in headline["segments"]:
+        table = Table(title=f"segment {block['segment']}: {block['start']} -> {block['end']}")
+        table.add_column("Series")
+        for column in ("total_return", "cagr", "volatility", "sharpe", "max_drawdown"):
+            table.add_column(column, justify="right")
+        for series, metrics in block.items():
+            if not isinstance(metrics, dict):
+                continue
+            table.add_row(
+                series,
+                *(
+                    str(metrics.get(c, "-"))
+                    for c in ("total_return", "cagr", "volatility", "sharpe", "max_drawdown")
+                ),
+            )
+        console.print(table)
+        portfolio = block.get("portfolio", {})
+        console.print(
+            "alpha vs ^NASI: "
+            f"{portfolio.get('alpha_vs_^NASI', '-')} "
+            f"(t {portfolio.get('alpha_t_stat_vs_^NASI', '-')}), "
+            f"beta {portfolio.get('beta_vs_^NASI', '-')}, "
+            f"avg monthly turnover {portfolio.get('avg_monthly_turnover', '-')}"
+        )
+    console.print(
+        "linked: " + json.dumps({k: v.get("value") for k, v in headline["linked"].items()})
+    )
+
+
+@backtest_app.command("run")
+def backtest_run_command(
+    start: str = typer.Option(..., "--from", help="First date (YYYY-MM-DD)"),
+    end: str = typer.Option(..., "--to", help="Last date (YYYY-MM-DD)"),
+    top_n: int | None = typer.Option(None, "--top-n", help="Positions per rebalance"),
+    name: str = typer.Option("factor-model", "--name", help="Run label"),
+    market_only: bool = typer.Option(
+        False, "--market-only", help="Control variant: momentum / risk / liquidity weights only"
+    ),
+) -> None:
+    """Monthly top-N rebalance of the ranking model, costed, vs ^NASI, ^N20I, equal weight."""
+    from app.web.services.analytics.backtesting import market_only_ranking, run_model_backtest
+    from app.web.services.analytics.config import DEFAULT_CONFIG
+
+    settings, source = _scraper_source()
+    first, last = _parse_day(start), _parse_day(end)
+    assert first is not None and last is not None
+    config = market_only_ranking(DEFAULT_CONFIG) if market_only else DEFAULT_CONFIG
+    result = run_model_backtest(
+        settings, source, start=first, end=last, name=name, config=config, top_n=top_n
+    )
+    console.print(f"run {result.run_id} '{result.name}' {result.start} -> {result.end}")
+    for note in result.result.notes:
+        console.print(f"[yellow]note[/yellow] {note}")
+    _print_backtest(result)
+
+
+@backtest_app.command("compare")
+def backtest_compare_command(
+    name: str | None = typer.Option(None, "--name", help="Only runs with this label"),
+) -> None:
+    """List stored runs with their linked total return and first-segment Sharpe."""
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.backtests import load_backtest_results, load_backtest_runs
+
+    settings = _settings()
+    table = Table(title="backtest runs")
+    for column in (
+        "id",
+        "name",
+        "purpose",
+        "period",
+        "top N",
+        "cost rate",
+        "linked return",
+        "CAGR",
+        "Sharpe (seg 1)",
+        "MDD (seg 1)",
+    ):
+        table.add_column(
+            column, justify="right" if column not in ("name", "purpose", "period") else "left"
+        )
+
+    def cell(results: dict[tuple[str, str, str], object], segment: str, metric: str) -> str:
+        row = results.get((segment, "portfolio", metric))
+        value = getattr(row, "value", None)
+        return "-" if value is None else f"{float(value):.4f}"
+
+    lines: list[str] = []
+    with analytics_session(settings) as session:
+        for run in load_backtest_runs(session, name=name):
+            results: dict[tuple[str, str, str], object] = {
+                (r.segment, r.series, r.metric): r for r in load_backtest_results(session, run.id)
+            }
+            table.add_row(
+                str(run.id),
+                run.name,
+                run.purpose,
+                f"{run.start_date}..{run.end_date}",
+                str(run.top_n),
+                f"{run.costs.get('rate', 0.0):.4f}",
+                cell(results, "linked", "total_return"),
+                cell(results, "linked", "cagr"),
+                cell(results, "1", "sharpe"),
+                cell(results, "1", "max_drawdown"),
+            )
+            lines.append(
+                f"{run.id} {run.name} ({run.purpose}) {run.start_date}..{run.end_date} "
+                f"linked return {cell(results, 'linked', 'total_return')}"
+            )
+    console.print(table)
+    for line in lines:
+        console.print(line, soft_wrap=True)
+
+
+@backtest_app.command("weight-search")
+def backtest_weight_search_command(
+    start: str = typer.Option(..., "--from", help="In-sample start (YYYY-MM-DD)"),
+    split: str = typer.Option(..., "--split", help="Out-of-sample start (YYYY-MM-DD)"),
+    end: str = typer.Option(..., "--to", help="Out-of-sample end (YYYY-MM-DD)"),
+    candidate: list[str] = typer.Option(
+        ..., "--candidate", help="name=factor:weight,factor:weight,... (repeatable)"
+    ),
+    top_n: int | None = typer.Option(None, "--top-n", help="Positions per rebalance"),
+) -> None:
+    """Try weight sets in-sample, pick by Sharpe, report them out-of-sample."""
+    from app.web.services.analytics.backtesting import weight_search
+
+    settings, source = _scraper_source()
+    candidates: dict[str, dict[str, float]] = {}
+    for item in candidate:
+        if "=" not in item:
+            raise typer.BadParameter(f"expected name=factor:weight,..., got {item!r}")
+        label, spec = item.split("=", 1)
+        weights: dict[str, float] = {}
+        for pair in spec.split(","):
+            factor, _, weight = pair.partition(":")
+            try:
+                weights[factor.strip()] = float(weight)
+            except ValueError as exc:
+                raise typer.BadParameter(f"{label}: weight {weight!r} is not a number") from exc
+        candidates[label.strip()] = weights
+    first, mid, last = _parse_day(start), _parse_day(split), _parse_day(end)
+    assert first is not None and mid is not None and last is not None
+    result = weight_search(
+        settings, source, candidates=candidates, start=first, split=mid, end=last, top_n=top_n
+    )
+    table = Table(title="weight search: in-sample pick, out-of-sample report")
+    for column in (
+        "candidate",
+        "IS return",
+        "IS Sharpe",
+        "IS MDD",
+        "OOS return",
+        "OOS Sharpe",
+        "OOS MDD",
+        "runs",
+    ):
+        table.add_column(column, justify="right" if column != "candidate" else "left")
+
+    def fmt(block: Mapping[str, object], key: str) -> str:
+        measure = block.get(key)
+        value = getattr(measure, "value", None)
+        return "-" if value is None else f"{float(value):.4f}"
+
+    for label in candidates:
+        i, o = result.in_sample[label], result.out_of_sample[label]
+        table.add_row(
+            label + (" *" if label == result.best_in_sample else ""),
+            fmt(i, "total_return"),
+            fmt(i, "sharpe"),
+            fmt(i, "max_drawdown"),
+            fmt(o, "total_return"),
+            fmt(o, "sharpe"),
+            fmt(o, "max_drawdown"),
+            "/".join(str(r) for r in result.run_ids[label]),
+        )
+    console.print(table)
+    console.print("* = best in-sample Sharpe; judge it by the out-of-sample columns")
 
 
 __all__ = ["analytics_app"]
