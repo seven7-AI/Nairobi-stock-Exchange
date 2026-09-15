@@ -281,6 +281,56 @@ def compute_fair_value_command(
     _print_compute(result)
 
 
+@compute_app.command("montecarlo")
+def compute_montecarlo_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Origin date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Seeded bootstrap price paths: return quantiles, P(return > x), P(drawdown > x)."""
+    from app.web.services.analytics.montecarlo import compute_montecarlo
+
+    settings, source = _scraper_source()
+    result = compute_montecarlo(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    _print_compute(result)
+
+
+@compute_app.command("scenarios")
+def compute_scenarios_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="Origin date (YYYY-MM-DD)"),
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Restrict to these tickers"),
+) -> None:
+    """Bear / base / bull what-ifs per stock with their assumptions stored verbatim."""
+    from app.web.services.analytics.scenarios import compute_scenarios
+
+    settings, source = _scraper_source()
+    result = compute_scenarios(settings, source, as_of=_parse_day(as_of), tickers=ticker or None)
+    _print_compute(result)
+
+
+@compute_app.command("regime")
+def compute_regime_command(
+    as_of: str | None = typer.Option(None, "--as-of", help="One date (YYYY-MM-DD)"),
+    start: str | None = typer.Option(None, "--from", help="First of a monthly series of dates"),
+    end: str | None = typer.Option(None, "--to", help="Last date of the series"),
+) -> None:
+    """Market regime on the benchmark index: trend, volatility, risk-on/off, evidence."""
+    from app.web.services.analytics.regime import compute_regime
+
+    settings, source = _scraper_source()
+    result = compute_regime(
+        settings, source, as_of=_parse_day(as_of), start=_parse_day(start), end=_parse_day(end)
+    )
+    table = Table(title=f"regime on {result.index} (calc version {result.calc_version_id})")
+    table.add_column("Label")
+    table.add_column("Dates", justify="right")
+    for label, count in sorted(result.labels.items(), key=lambda item: -item[1]):
+        table.add_row(label, str(count))
+    console.print(table)
+    if len(result.regimes) == 1:
+        console.print_json(data=result.regimes[0].evidence)
+    console.print(f"rows written {result.rows_written}")
+
+
 @compute_app.command("rankings")
 def compute_rankings_command(
     as_of: str | None = typer.Option(None, "--as-of", help="Evaluation date (YYYY-MM-DD)"),

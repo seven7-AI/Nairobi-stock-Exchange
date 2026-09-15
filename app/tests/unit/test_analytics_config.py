@@ -62,7 +62,7 @@ def test_canonical_json_sorts_keys() -> None:
     text = DEFAULT_CONFIG.canonical_json()
     keys = list(json.loads(text))
     assert keys == sorted(keys) and "factors" in keys and "fundamentals" in keys
-    assert " " not in text
+    assert '": ' not in text and '", "' not in text  # compact separators
 
 
 @pytest.fixture
