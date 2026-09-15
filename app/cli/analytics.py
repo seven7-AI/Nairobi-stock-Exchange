@@ -493,4 +493,65 @@ def walk_forward_command(
     )
 
 
+portfolio_app = typer.Typer(help="Risk analysis of hypothetical portfolios.")
+analytics_app.add_typer(portfolio_app, name="portfolio")
+
+
+@portfolio_app.command("analyse")
+def portfolio_analyse_command(
+    weights: str = typer.Option(..., "--weights", help="TICKER=WEIGHT,... summing to 1"),
+    as_of: str | None = typer.Option(None, "--as-of", help="Analysis date (YYYY-MM-DD)"),
+    name: str = typer.Option("adhoc", "--name", help="Label stored with the analysis"),
+) -> None:
+    """Expected return, risk, exposure, concentration, liquidity and warnings for weights."""
+    from app.web.services.analytics.portfolio import (
+        WeightError,
+        analyse_hypothetical_portfolio,
+        parse_weights,
+    )
+
+    settings, source = _scraper_source()
+    try:
+        parsed = parse_weights(weights)
+        result = analyse_hypothetical_portfolio(
+            settings, source, parsed, name=name, as_of=_parse_day(as_of)
+        )
+    except WeightError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    a = result.analysis
+    table = Table(title=f"portfolio '{result.name}' as of {result.as_of} (row {result.row_id})")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+
+    def show(label: str, measure: object) -> None:
+        value = getattr(measure, "value", None)
+        status = getattr(measure, "status", None)
+        text = f"{value:.4f}" if value is not None else str(getattr(status, "value", status))
+        table.add_row(label, text)
+
+    show("expected return (hist., ann.)", a.expected_return)
+    show("volatility (ann.)", a.volatility)
+    show("Sharpe", a.sharpe)
+    show("max drawdown", a.max_drawdown)
+    show("beta", a.beta)
+    show("avg pairwise correlation", a.average_correlation)
+    table.add_row("HHI / effective positions", f"{a.hhi:.3f} / {a.effective_positions:.2f}")
+    table.add_row("top-N weight", f"{a.top_n_weight:.2f}")
+    table.add_row("coverage", f"{a.coverage:.0%}")
+    console.print(table)
+    console.print(
+        "sector exposure: " + ", ".join(f"{k} {v:.0%}" for k, v in a.sector_exposure.items())
+    )
+    console.print(
+        "days to liquidate: "
+        + ", ".join(
+            f"{k} {v:.1f}" if v is not None else f"{k} n/a" for k, v in a.days_to_liquidate.items()
+        )
+    )
+    for warning in a.warnings:
+        console.print(f"[yellow]warning[/yellow] {warning}")
+    if not a.expected_return.is_known:
+        console.print(f"[red]{a.expected_return.reason}[/red]")
+
+
 __all__ = ["analytics_app"]
