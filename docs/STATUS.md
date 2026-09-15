@@ -990,3 +990,49 @@ dependents, records the error, resumes without duplicates; `always_run` steps ne
 skip; `job_status` reports tables, jobs and models; CLI (`jobs fundamentals` twice,
 `jobs status`, a failing pipeline exits 1); the Celery task runs the same pipeline
 eagerly and skips on the second call; the cron script prints the chained entries.
+
+## #20 Research diagrams  ✅ 2026-09-15
+
+`app/web/services/visualizations/` gains one module per chart, each a pure `figure_for`
+over a small dataclass plus a loader and a `write_*` (the `stock_growth.py` pattern), and
+`diagrams.py` regenerates every folder. Price-based charts compute in-segment from the
+canonical closes and draw a gap as a gap (a NaN breaks the line, a shaded span names the
+hole); store-based charts read the analytics store, and a chart with nothing to show
+says why instead of drawing an empty axis or a zero.
+
+| folder | chart | source |
+|---|---|---|
+| `volatility/` | 63-day annualised volatility and drawdown from the running peak per instrument (window refills and peak resets after a gap) | prices |
+| `momentum/` | stock and `^NASI` rebased to 100, relative strength | prices |
+| `sector-analysis/` | median 12-month return per sector with member counts (indices / ETFs excluded) | `market_metrics` + classification |
+| `factor-ranking/` | top 15 overall scores with classification, every factor's market percentile (a missing factor drawn empty) | `stock_rankings` |
+| `valuation/` | fair-value range and intrinsic value relative to price, grey when not actionable | `valuations` |
+| `forecasts/` | two years of closes and the AR(1) fan (q05–q95, q25–q75, median) at 1 / 3 / 6 / 12 months | prices + `forecasts` |
+| `backtests/` | equity curve vs rebased benchmarks, drawdown, segments drawn apart | `backtest_equity` |
+| `portfolio-risk/` | correlation heat map, risk / return scatter with the held positions highlighted | `portfolio_analyses` + `market_metrics` |
+
+`nse-analysis analytics plot <kind> [--ticker … | --all] [--as-of] [--run-id] [--name]
+[--out]`; `plot all` regenerates every folder (per-stock kinds for every instrument).
+Each folder carries a README saying what its chart shows and leaves out.
+
+**Live** — `analytics plot all` from the live store on the shared box: 284 PNGs, 36.9 MB,
+12 m 38 s (93 instruments × volatility 16 MB, momentum 19 MB, forecasts 2.2 MB — every
+forecast chart in the scraper era says "no known forecast", since the origin sits two
+months after the gap; sector performance, the top 13 of `factor-model v1` as of
+2026-09-15 (EQTY 79 Buy Candidate, then KEGN / BRIT / SCOM / BAT … Watch; momentum,
+risk and liquidity drawn empty because the gap makes them `unavailable`), fair value vs
+price for 8 instruments, the two model backtest runs (the equity curve shows the model
+flat in cash until 2022 and both index archives' 2022 hole as a break, plus the
+`^N20I` 2024-11-26 decimal slip the quality checks already reported, drawn as it is
+stored), and the three portfolio analyses). The per-instrument folders are regenerated
+locally and git-ignored; the summary charts are committed.
+
+Tests (9): `broken_line` inserts one NaN per gap on the last day before it; the
+volatility figure breaks at the gap, refills the window after it and resets the
+drawdown peak, renders PNG; relative strength by hand (100 / 110 / 120 rebase, ratio),
+no shared dates → a chart that says so; every empty figure names its reason and
+renders; ranking and valuation figures from dataclasses (order, bar counts, upside
+sort); the forecast fan (bands, median, 12M note) and the backtest figure (segment
+break drawn as a gap) and the portfolio figure (heat map + scatter); the store loaders
+on a populated fixture store (sector medians exclude indices, ranking order, KCB fan at
+54.0 with four horizons) and `plot all` writing every folder with real PNGs; CLI.

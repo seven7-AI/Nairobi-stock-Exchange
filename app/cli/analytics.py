@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -846,6 +847,52 @@ def jobs_status_command() -> None:
     for m in status.models:
         models.add_row(m["name"], m["version"], m["kind"], m["status"])
     console.print(models)
+
+
+@analytics_app.command("plot")
+def plot_command(
+    kind: str = typer.Argument(
+        ...,
+        help=(
+            "volatility | momentum | sector-analysis | factor-ranking | valuation | "
+            "forecasts | backtests | portfolio-risk | all"
+        ),
+    ),
+    ticker: list[str] | None = typer.Option(
+        None, "--ticker", help="Instrument(s) for per-stock charts"
+    ),
+    all_tickers: bool = typer.Option(False, "--all", help="Every instrument for per-stock charts"),
+    as_of: str | None = typer.Option(
+        None, "--as-of", help="Date for store-driven charts (default latest)"
+    ),
+    run_id: int | None = typer.Option(
+        None, "--run-id", help="Backtest run to draw (default latest)"
+    ),
+    name: str | None = typer.Option(None, "--name", help="Backtest / portfolio name to draw"),
+    out_dir: Path | None = typer.Option(None, "--out", help="Override diagrams/ root"),
+) -> None:
+    """Render research diagrams into diagrams/<kind>/ from the analytics store and prices."""
+    from app.web.services.visualizations.diagrams import plot_kinds
+
+    settings, source = _scraper_source()
+    diagrams_dir = out_dir or settings.diagrams_dir
+    written = plot_kinds(
+        settings,
+        source,
+        kind,
+        diagrams_dir=diagrams_dir,
+        tickers=ticker or None,
+        all_tickers=all_tickers,
+        as_of=_parse_day(as_of),
+        run_id=run_id,
+        name=name,
+    )
+    total = 0
+    for path in written:
+        size = path.stat().st_size
+        total += size
+        console.print(f"{path.relative_to(diagrams_dir.parent)}  {size / 1024:.0f} KB")
+    console.print(f"{len(written)} diagram(s), {total / 1024:.0f} KB")
 
 
 __all__ = ["analytics_app"]
