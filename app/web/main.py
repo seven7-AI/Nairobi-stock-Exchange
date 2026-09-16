@@ -29,6 +29,7 @@ from app.web.api.routers.market_data.views import router as market_data_router
 from app.web.api.routers.onboarding.views import router as onboarding_router
 from app.web.api.routers.organizations.views import router as organizations_router
 from app.web.api.routers.reports.views import router as reports_router
+from app.web.api.routers.research.views import router as research_router
 from app.web.api.routers.users.views import router as users_router
 from app.web.config import Settings, get_settings
 from app.web.core.dependencies import build_app_state, set_app_state, shutdown_app_state
@@ -47,6 +48,7 @@ DOMAIN_ROUTERS = (
     indicators_router,
     analytics_router,
     reports_router,
+    research_router,
     connectors_router,
 )
 

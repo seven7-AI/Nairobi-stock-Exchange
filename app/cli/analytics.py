@@ -895,4 +895,28 @@ def plot_command(
     console.print(f"{len(written)} diagram(s), {total / 1024:.0f} KB")
 
 
+@analytics_app.command("research")
+def research_command(
+    ticker: str = typer.Argument(..., help="Instrument to profile"),
+    as_of: str | None = typer.Option(
+        None, "--as-of", help="Use the latest data on or before this date"
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the profile as JSON"),
+) -> None:
+    """The structured research profile of one instrument, every value from the store."""
+    import json
+
+    from app.web.services.analytics.research import build_profile, render_profile
+
+    settings = _settings()
+    profile = build_profile(settings, ticker, as_of=_parse_day(as_of))
+    if profile is None:
+        console.print(f"{ticker.upper()} is not an instrument in the analytics store")
+        raise typer.Exit(code=1)
+    if as_json:
+        console.print_json(json.dumps(profile.as_dict(), default=str))
+    else:
+        console.print(render_profile(profile), soft_wrap=True, markup=False, highlight=False)
+
+
 __all__ = ["analytics_app"]
