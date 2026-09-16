@@ -127,6 +127,18 @@ class BacktestPage(BaseModel):
     total: int
 
 
+class NarrativeOut(BaseModel):
+    ticker_symbol: str
+    as_of: date_type | None
+    status: str
+    reason: str | None
+    narrative: str | None
+    model: str | None
+    prompt_version: str | None
+    context_hash: str | None
+    created_at: str | None
+
+
 __all__ = [
     "BacktestPage",
     "BacktestRow",
@@ -134,6 +146,7 @@ __all__ = [
     "HistoryOut",
     "HistoryPoint",
     "Measure",
+    "NarrativeOut",
     "RankingPage",
     "RankingRow",
     "ResearchProfileOut",

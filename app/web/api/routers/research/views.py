@@ -25,6 +25,7 @@ from app.web.api.routers.research.schema import (
     HistoryOut,
     HistoryPoint,
     Measure,
+    NarrativeOut,
     RankingPage,
     RankingRow,
     ResearchProfileOut,
@@ -41,6 +42,7 @@ from app.web.db.analytics.models import StockRanking
 from app.web.db.analytics.services.backtests import load_backtest_results, load_backtest_runs
 from app.web.db.analytics.services.classifications import load_classifications
 from app.web.db.analytics.services.stock_rankings import load_rankings
+from app.web.services.analytics.ai import latest_narrative
 from app.web.services.analytics.classification.lookup import ClassificationIndex
 from app.web.services.analytics.research import build_profile
 from app.web.services.visualizations.research_charts import load_sector_performance
@@ -257,6 +259,38 @@ def _backtests(settings: Settings, limit: int, cursor: str | None) -> BacktestPa
 async def backtests(settings: SettingsDep, limit: int = Limit, cursor: str | None = Cursor) -> BacktestPage:
     """Stored backtest runs with their headline metrics, oldest first."""
     return await run_in_threadpool(_backtests, settings, limit, cursor)
+
+
+def _narrative(settings: Settings, ticker: str) -> NarrativeOut:
+    symbol = ticker.upper()
+    with analytics_session(settings) as session:
+        index = ClassificationIndex(load_classifications(session))
+        if symbol not in index.tickers:
+            raise ResourceNotFoundError(f"{symbol} is not an instrument in the analytics store.")
+    row = latest_narrative(settings, symbol)
+    if row is None:
+        reason = (
+            "no narrative generated yet (run `nse-analysis analytics narrate`)"
+            if settings.ai_narratives_enabled
+            else "AI narratives are off (AI_NARRATIVES_ENABLED=false)"
+        )
+        return NarrativeOut(
+            ticker_symbol=symbol, as_of=None, status="unavailable", reason=reason, narrative=None,
+            model=None, prompt_version=None, context_hash=None, created_at=None,
+        )
+    return NarrativeOut(
+        ticker_symbol=symbol, as_of=row.as_of_date, status=row.status, reason=row.reason,
+        narrative=row.narrative if row.status == "known" else None, model=row.model,
+        prompt_version=row.prompt_version, context_hash=row.context_hash,
+        created_at=row.created_at.isoformat(),
+    )
+
+
+@router.get("/stocks/{ticker}/narrative", response_model=NarrativeOut, dependencies=[ResearchUser])
+async def stock_narrative(ticker: str, settings: SettingsDep) -> NarrativeOut:
+    """The latest stored AI narrative - read-only; generation is a CLI / job action.
+    A rejected narrative (it cited a number not in its context) is never returned as text."""
+    return await run_in_threadpool(_narrative, settings, ticker)
 
 
 __all__ = ["router"]

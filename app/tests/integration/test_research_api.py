@@ -89,6 +89,7 @@ async def test_allowed_roles_read_every_endpoint(
         "/stocks/KCB/risk",
         "/stocks/KCB/factors",
         "/stocks/KCB/history",
+        "/stocks/KCB/narrative",
         "/rankings",
         "/sectors",
         "/backtests",
@@ -107,6 +108,7 @@ async def test_client_role_is_forbidden_everywhere(
         "/stocks",
         "/stocks/KCB",
         "/stocks/KCB/metrics",
+        "/stocks/KCB/narrative",
         "/rankings",
         "/sectors",
         "/backtests",
@@ -116,7 +118,12 @@ async def test_client_role_is_forbidden_everywhere(
 
 async def test_unknown_ticker_is_404(research_client: AsyncClient, token_for_role) -> None:
     actor = await token_for_role("analyst")
-    for path in ("/stocks/NOPE", "/stocks/NOPE/metrics", "/stocks/NOPE/history"):
+    for path in (
+        "/stocks/NOPE",
+        "/stocks/NOPE/metrics",
+        "/stocks/NOPE/history",
+        "/stocks/NOPE/narrative",
+    ):
         response = await research_client.get(BASE + path, headers=actor["headers"])
         assert response.status_code == 404, path
         assert "not an instrument" in response.json()["message"]
@@ -189,6 +196,17 @@ async def test_lists_paginate(research_client: AsyncClient, token_for_role) -> N
     assert backtests == {"items": [], "next_cursor": None, "total": 0}
     bad = await research_client.get(f"{BASE}/sectors?metric=drop%20table", headers=actor["headers"])
     assert bad.status_code == 422
+
+
+async def test_narrative_is_unavailable_until_generated(
+    research_client: AsyncClient, token_for_role
+) -> None:
+    actor = await token_for_role("research_viewer")
+    body = (
+        await research_client.get(f"{BASE}/stocks/KCB/narrative", headers=actor["headers"])
+    ).json()
+    assert body["ticker_symbol"] == "KCB" and body["status"] == "unavailable"
+    assert body["narrative"] is None and "AI_NARRATIVES_ENABLED" in body["reason"]
 
 
 async def test_unauthenticated_is_401(research_client: AsyncClient) -> None:

@@ -1151,3 +1151,53 @@ The cron chain (`09:40` daily, `10:10` fundamentals, Saturday `10:30` weekly) st
 installed in #19; a full morning costs about 14 minutes of compute on this box and the
 second run of a day about a minute. The backtest is not part of the daily chain (the
 2013–2024 run in #18 took hours) and its stored results are unchanged.
+
+## #23 AI reasoning layer  ✅ 2026-09-16
+
+`app/web/services/analytics/ai/narrative.py` — a research note written by Claude from
+the stored profile, and nothing else. `build_context(profile)` reduces the #21 profile
+to the numbers that are `known` (ratios rendered as percentages, the rest rounded to two
+decimals) and the reasons of the `unavailable` ones — score, factors, the eight metric
+blocks, valuation, forecasts, scenarios, regime — and `context_hash` fingerprints it.
+`narrate(settings, ticker, as_of, client, force)` sends `SYSTEM_PROMPT` (prompt version
+1: interpret only, cite only context numbers, never recommend, disclaim once) plus the
+JSON context to `AnthropicNarrativeClient` (`anthropic` 1.5.0, `messages.create`, model
+`AI_MODEL` default `claude-opus-5`, a refusal stop reason becomes `unavailable`), then
+**`check_numbers`** scans the reply: every number in the prose must be one the context
+contains (any formatting variant of it — `4.44`, `4.4`, `22.0%`, `296,441,944,684`);
+small integers (≤ 36: horizons, counts) and years are allowed. A note that cites
+anything else is stored with status `rejected` and its text is never served. One row per
+(ticker, as-of, model, prompt version, context hash): a second call reuses it, `--force`
+regenerates, a changed store means a new hash and a new note. Statuses: `known`,
+`rejected`, `unavailable` (no key, API error, refusal, unknown ticker), `disabled`.
+
+Feature-gated and secret-safe: `AI_NARRATIVES_ENABLED` (default false),
+`ANTHROPIC_API_KEY` (Settings only; `sk-ant-…` values are redacted by the logger),
+`AI_MODEL`. Table `research_narratives` (migration `20260915_0014`: ticker, as-of, model,
+prompt version, context hash, status, reason, narrative, the context JSON, created at).
+CLI `nse-analysis analytics narrate TICKER [--as-of] [--force]`; API
+`GET /research/stocks/{ticker}/narrative` (`NarrativeOut`, `RESEARCH_ROLES`) returns the
+latest row read-only — generation is never a request. `docs/quant-engine.md` gains the
+section.
+
+Tests (`app/tests/unit/test_ai_narrative.py`, fake clients only — no network): the
+number check accepts context numbers in any variant and rejects `9.1%`, `23%`,
+`173,395` from prose while allowing confidence 0.87, the score, horizons, counts and
+years; the context is built from the profile only (KCB 2024-12-31 on the fixture:
+score, P/E, ROE present, no raw statement rows); the store cycle — known → reused by
+hash → `--force` with a fabricating client stored `rejected` naming the offending
+numbers → a client that raises stored `unavailable` with the error → `latest_narrative`
+is the newest row; disabled and keyless produce clean statuses and write nothing; API
+keys never appear in log events; the CLI exits 1 naming the missing key. The research
+API tests now sweep `/stocks/{ticker}/narrative` with every role (200 / 403 / 404) and
+read `unavailable` with the feature-flag reason before anything is generated.
+
+Live (2026-09-16): `analytics upgrade` migrated the live store `20260915_0013 →
+20260915_0014` (`research_narratives`, 0 rows). `narrate KCB` with the flag off prints
+`disabled — AI narratives are off (AI_NARRATIVES_ENABLED=false)` and writes nothing;
+with `AI_NARRATIVES_ENABLED=true` and no key it prints `unavailable — no
+ANTHROPIC_API_KEY configured` (as of 2026-09-16, the ranking date) and writes nothing.
+No `ANTHROPIC_API_KEY` is configured on this machine, so no note has been generated
+against the live API yet; the generation path is exercised by the fake clients in the
+tests. To switch it on: set the two variables in `.env` and run `narrate TICKER` —
+the first call stores the note, every later call reuses it until the store changes.
