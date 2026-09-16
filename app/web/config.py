@@ -170,6 +170,11 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- AI narrative layer (optional; off by default) ---------------------
+    ai_narratives_enabled: bool = Field(default=False, alias="AI_NARRATIVES_ENABLED")
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
+
     # --- analytics --------------------------------------------------------
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     historical_days_back: int = Field(

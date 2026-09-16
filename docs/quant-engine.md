@@ -84,7 +84,24 @@ uv run nse-analysis analytics backtest run --from 2013-01-01 --to 2024-12-31
 uv run nse-analysis analytics backtest compare
 uv run nse-analysis analytics portfolio analyse --weights KCB=0.4,EQTY=0.3,SCOM=0.3
 uv run nse-analysis analytics plot all                     # diagrams/<kind>/ (#20)
+uv run nse-analysis analytics narrate KCB                  # AI research note (#23)
 ```
+
+## The AI narrative layer
+
+`app/web/services/analytics/ai/narrative.py` turns the stored profile into a short
+research note with Claude. It is **off by default** and reads only the store:
+
+- `AI_NARRATIVES_ENABLED=true`, `ANTHROPIC_API_KEY=…` (never logged; the value pattern
+  is redacted), `AI_MODEL` (default `claude-opus-5`).
+- `build_context(profile)` keeps only `known` numbers (plus the reasons of the
+  `unavailable` ones) and is hashed; the note is generated once per
+  (ticker, as-of, model, prompt version, context hash) and reused after that.
+- `check_numbers` rejects a note that cites any number not present in the context —
+  the row is stored with status `rejected` and the text is never served. Statuses:
+  `known`, `rejected`, `unavailable` (no key, API error, refusal), `disabled`.
+- `GET /research/stocks/{ticker}/narrative` returns the latest stored row; generation
+  is a CLI / job action, never a request.
 
 ## Configuration
 

@@ -931,4 +931,29 @@ def research_command(
         console.print(render_profile(profile), soft_wrap=True, markup=False, highlight=False)
 
 
+@analytics_app.command("narrate")
+def narrate_command(
+    ticker: str = typer.Argument(..., help="Instrument to narrate"),
+    as_of: str | None = typer.Option(None, "--as-of", help="Profile as of this date"),
+    force: bool = typer.Option(False, "--force", help="Regenerate even for an unchanged context"),
+) -> None:
+    """Ask Claude to explain the stored profile (feature-gated; numbers are verified)."""
+    from app.web.services.analytics.ai import narrate
+
+    settings = _settings()
+    result = narrate(settings, ticker, as_of=_parse_day(as_of), force=force)
+    console.print(
+        f"{result.ticker_symbol} narrative as of {result.as_of}: {result.status}"
+        + (" (reused)" if result.reused else "")
+        + (f" — {result.reason}" if result.reason else ""),
+        soft_wrap=True,
+        markup=False,
+    )
+    if result.narrative:
+        console.print("")
+        console.print(result.narrative, soft_wrap=True, markup=False, highlight=False)
+    if result.status in ("disabled", "unavailable", "rejected"):
+        raise typer.Exit(code=1)
+
+
 __all__ = ["analytics_app"]
