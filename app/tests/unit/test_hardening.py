@@ -268,3 +268,25 @@ def test_settings_never_expose_keys_in_logs(caplog: pytest.LogCaptureFixture) ->
             note="sk-ant-secretsecretsecret",
         )
     assert "secretsecret" not in caplog.text
+
+
+def test_analytics_cli_runs_without_supabase_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cron chain runs `nse-analysis analytics …` with no Supabase environment at
+    all (found by the first unattended 09:40 run): settings must not demand it."""
+    from typer.testing import CliRunner
+
+    from app.cli.main import app
+    from app.web.config import get_settings
+
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_KEY", raising=False)
+    monkeypatch.setenv("ANALYTICS_DB_PATH", str(tmp_path / "a.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        assert Settings().supabase_url == ""
+        result = CliRunner().invoke(app, ["analytics", "upgrade"])
+        assert result.exit_code == 0, result.output
+    finally:
+        get_settings.cache_clear()
