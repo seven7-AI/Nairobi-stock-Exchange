@@ -233,3 +233,5 @@ reports/backtest-live.log
 diagrams/volatility/*.png
 diagrams/momentum/*.png
 diagrams/forecasts/*.png
+# Appended by every cron run (scripts/run_analytics_jobs.sh); job state lives in the analytics store
+reports/analytics-jobs.log
