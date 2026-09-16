@@ -167,6 +167,7 @@ calc version).
 | Scenario | Behaviour |
 |---|---|
 | Scraper database missing or unreadable | `ExternalServiceError` before any job row is written; cron logs FAILED |
+| No `SUPABASE_URL` / `SUPABASE_KEY` in the environment (cron has none) | fine — the analytics CLI never touches Supabase; only the `supabase` market-data source and the API's client report "not configured" |
 | Analytics store held by another writer | connections wait up to 120 s, then `database is locked` — the step records it and the next run resumes |
 | A ticker with only some statements | the missing statement's metrics are `missing` with the item named; the others compute |
 | Empty universe (fresh scraper DB) | every pipeline succeeds with zero rows; profiles are 404 / `None` |

@@ -1201,3 +1201,52 @@ No `ANTHROPIC_API_KEY` is configured on this machine, so no note has been genera
 against the live API yet; the generation path is exercised by the fake clients in the
 tests. To switch it on: set the two variables in `.env` and run `narrate TICKER` —
 the first call stores the note, every later call reuses it until the store changes.
+
+## Epic #24 — complete  ✅ 2026-09-16
+
+Twenty-two issues merged in four days (nse-be PRs #25–#46, scraper PRs #3 and #4), every
+one through the local gate with real-data validation recorded above. What exists now:
+
+| Layer | Where | Live state (2026-09-16) |
+|---|---|---|
+| Raw data | `~/nse-stock-scraper` SQLite, read-only | 287,978 observations / 102 instruments (2007-01 → 2024-12, 2026-07 → today); statements for 17 of 63 tickers, 8 more a day |
+| Store | `data/nse_analytics.sqlite3`, Alembic `20260915_0014`, 21 tables | market_metrics 23,580 · fundamental_metrics 3,844 · factor_scores 3,087 · stock_rankings 352 · valuations 182 · forecasts 15,152 · forecast_evaluations 9,160 · simulations 3,548 · regimes 207 · portfolio_analyses 4 · backtest_runs 4 · research_narratives 0 |
+| Engines | `app/web/services/analytics/` — returns, momentum, risk, liquidity, fundamentals, valuation metrics, factors, ranking, fair value, forecasting, Monte Carlo, scenarios, regime, portfolio, backtesting, research profile, AI narrative | every row carries `calc_version_id`, `status`, `reason`; 15 calc versions registered |
+| Jobs | `jobs daily` 09:40 · `fundamentals` 10:10 · Saturday `weekly` 10:30 (`CRON_TZ=Africa/Nairobi`), Celery wrappers | a morning costs ~14 min of compute here, a rerun ~1 min; the quality gate halts on new error findings |
+| Surfaces | CLI `nse-analysis analytics …` (compute, rank, research, backtest, portfolio, forecast, plot, narrate, jobs, dq, classify, upgrade); API `/research/*` with RBAC | `research KCB`: score 55.2 Watch, ranks 7/3/3, intrinsic 99.56 vs 92.25 |
+| Diagrams | `diagrams/{momentum,volatility,valuation,sector-analysis,factor-ranking,forecasts,backtests,portfolio-risk}/` | 284 PNGs from `plot all` |
+
+What the numbers honestly say today: the 2024-12-31 → 2026-07-26 gap makes every
+3-month-plus price window, volatility, beta, liquidity, MA50/200, forecasts and the
+regime `unavailable` for the current date and will keep doing so until 2026-10 (3 m),
+2027-01 (6 m) and 2027-07 (12 m) of continuous scraping exist; fundamentals, valuation
+metrics, fair value, dividend and quality factors are live for the tickers with
+statements; the ranking scores 13 instruments with confidence 0.65 and names the 30 %
+of weight it cannot apply. The 2013–2024 backtest of `factor-model v1` returned
+−18.2 % against NASI +74.2 % and a market-only control of −56.6 % after costs — the
+model is registered as `candidate`, not `active`, on purpose. Known archive defects
+(`^N20I` 2024-11-26 decimal slip, `^NASI` 2021-12 → 2022-06 hole, no index data after
+2024) are open findings the engines carry in their reasons rather than patch.
+
+**Found by the first unattended cron run (2026-09-16 09:40):** both pipelines failed
+before starting — `Settings` demanded `SUPABASE_URL` / `SUPABASE_KEY`, which every
+interactive run had supplied by hand and cron does not. The two fields now default to
+empty (the `supabase` source and the API's client already handle "not configured"),
+`test_hardening.py` runs `analytics upgrade` with both variables unset, and
+`scripts/run_analytics_jobs.sh daily` / `fundamentals` were rerun under `env -i`
+(cron's environment) — see the log lines below.
+
+```
+[2026-09-16T09:40:19+0200] START pipeline=daily args=          ← installed cron, before the fix
+[2026-09-16T10:20:48+0200] FAILED pipeline=daily exit=1         ValidationError: SUPABASE_URL / SUPABASE_KEY Field required
+[2026-09-16T10:34:52+0200] START pipeline=daily args=          ← env -i, after the fix
+[2026-09-16T10:39:20+0200] OK pipeline=daily                    run 170: 10/10 succeeded — the 09:00 scrape had landed, so
+                                                                quality wrote 41 new (non-error) findings and every step recomputed
+[2026-09-16T10:39:20+0200] START pipeline=fundamentals args=
+[2026-09-16T10:40:59+0200] OK pipeline=fundamentals             run 191: fundamentals 960 rows (the day's 7 new statement tickers),
+                                                                valuation metrics 768, fair value 84, rankings 89
+```
+
+Operator guide: `docs/quant-engine.md`. Data sources and their defects:
+`docs/data-sources.md`. The scraper's view of the hand-over: its `docs/STATUS.md`
+Phase 13.

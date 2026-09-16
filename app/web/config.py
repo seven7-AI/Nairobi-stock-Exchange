@@ -44,8 +44,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["*"], alias="CORS_ORIGINS")
 
     # --- upstream market data (external scraper owns this table) ----------
-    supabase_url: str = Field(alias="SUPABASE_URL")
-    supabase_key: str = Field(alias="SUPABASE_KEY")
+    # Optional: the analytics CLI and cron jobs read the scraper's SQLite and never
+    # touch Supabase. An empty value makes the supabase source and the API's client
+    # unavailable with a clear message instead of failing settings validation.
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_key: str = Field(default="", alias="SUPABASE_KEY")
     stockanalysis_table: str = Field(default="stockanalysis_stocks", alias="STOCKANALYSIS_TABLE")
 
     # --- database (tables this repo owns) ---------------------------------
