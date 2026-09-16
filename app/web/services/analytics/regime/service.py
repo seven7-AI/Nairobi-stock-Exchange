@@ -14,6 +14,7 @@ from app.web.db.analytics.models import JobRun, JobStatus
 from app.web.db.analytics.services.simulations import upsert_regimes
 from app.web.services.analytics.config import DEFAULT_CONFIG, AnalyticsConfig, register_calc_version
 from app.web.services.analytics.forecasting.engine import shift_forward
+from app.web.services.analytics.measure import Measure
 from app.web.services.analytics.regime.engine import Regime, detect_regime
 from app.web.services.analytics.returns.service import load_universe
 from app.web.services.analytics.series import PriceSeries
@@ -79,10 +80,14 @@ def compute_regime(
             cfg = config.regime
             universe = load_universe(source, config, tickers=[cfg.index, cfg.fallback_index])
             series = universe.get(cfg.index)
-            if series is None:
-                raise ValueError(f"regime index {cfg.index} is not in the source")
             fallback = universe.get(cfg.fallback_index)
-            regimes = [detect_regime(series, day, config) for day in dates]
+            if series is None:
+                # Missing, not zero: the source has no such index (an empty or foreign
+                # database), so every date is `missing` with the index named.
+                reason = f"regime: index {cfg.index} is not in the source"
+                regimes = [Regime(cfg.index, day, Measure.missing(reason)) for day in dates]
+            else:
+                regimes = [detect_regime(series, day, config) for day in dates]
             if fallback is not None:
                 # dates the primary cannot cover for lack of history fall back to the
                 # older index; the row says which index it came from

@@ -102,3 +102,57 @@ new version — the old rows stay.
   backtester simulates with no lock held and writes at the end.
 - `docs/STATUS.md` records every phase with its live numbers; `docs/data-sources.md`
   describes the raw sources and their known defects.
+
+## End-to-end runbook
+
+The order below is what cron runs; the timings are from the run recorded in
+`docs/STATUS.md` (#22) on the shared build machine — expect faster on a quiet host.
+
+```bash
+# 1. raw data (scraper repo): prices + statements, once a day at 09:00 Nairobi
+cd ~/nse-stock-scraper && bash scripts/run_daily_with_git.sh
+
+# 2. the analytics store, created or migrated in place
+uv run nse-analysis analytics upgrade
+
+# 3. one-off / rarely: point-in-time classification
+uv run nse-analysis analytics classify
+
+# 4. the pipelines (each skips unchanged steps; each records job_runs rows)
+uv run nse-analysis analytics jobs daily          # quality gate → metrics → factors → rankings → fair value
+uv run nse-analysis analytics jobs fundamentals   # only when statements changed
+uv run nse-analysis analytics jobs weekly         # regime, forecasts (+ evaluation), Monte Carlo
+
+# 5. read
+uv run nse-analysis analytics jobs status
+uv run nse-analysis analytics research KCB
+uv run nse-analysis analytics plot all
+
+# 6. when the ranking model changes: the backtest (hours on a loaded box)
+uv run nse-analysis analytics backtest run --from 2013-01-01 --to 2024-12-31
+```
+
+### The quality gate
+
+`jobs daily` starts with the data-quality checks. If that run creates **new**
+error-severity findings (a decimal slip, an impossible OHLC, a broken scrape), the
+pipeline stops before computing and the step row says which findings and why
+(`DataQualityGateError`). The first run on a store has no baseline — every finding is
+new — so it reports and continues. Known, still-open defects never halt it — they are reported
+in `jobs status` and every engine handles them (windows containing a flagged
+observation say so in their reason). Override for one run with
+`jobs daily --ignore-quality-gate`, or disable with
+`AnalyticsConfig.quality.halt_on_new_errors = 0` (a config change, so a new
+calc version).
+
+### Failure modes and what you see
+
+| Scenario | Behaviour |
+|---|---|
+| Scraper database missing or unreadable | `ExternalServiceError` before any job row is written; cron logs FAILED |
+| Analytics store held by another writer | connections wait up to 120 s, then `database is locked` — the step records it and the next run resumes |
+| A ticker with only some statements | the missing statement's metrics are `missing` with the item named; the others compute |
+| Empty universe (fresh scraper DB) | every pipeline succeeds with zero rows; profiles are 404 / `None` |
+| `^NASI` (or the fallback) absent from the source | regime rows are `missing` naming the index; profiles and diagrams show it as such |
+| New error-severity findings | the daily pipeline halts at the quality gate (above) |
+| A step crashes mid-run | its row is `failed` with the exception; dependents are skipped; rerun resumes |

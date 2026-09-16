@@ -44,6 +44,8 @@ class JobContext:
     as_of: date
     config: AnalyticsConfig
     watermarks: Mapping[str, str]
+    #: Compute even when the quality step found new errors (the operator's call).
+    ignore_quality_gate: bool = False
 
 
 @dataclass(frozen=True)
@@ -241,13 +243,14 @@ def run_pipeline(
     force: bool = False,
     config: AnalyticsConfig = DEFAULT_CONFIG,
     steps: Sequence[Step] | None = None,
+    ignore_quality_gate: bool = False,
 ) -> PipelineResult:
     from app.web.services.jobs.pipelines import PIPELINES
 
     chosen = list(steps) if steps is not None else PIPELINES[pipeline]
     day = as_of or datetime.now(UTC).date()
     started = datetime.now(UTC)
-    ctx = JobContext(settings, source, day, config, source.input_watermarks())
+    ctx = JobContext(settings, source, day, config, source.input_watermarks(), ignore_quality_gate)
     with analytics_session(settings) as session:
         run = JobRun(job_name=f"pipeline:{pipeline}", started_at=started, as_of_date=day)
         session.add(run)
@@ -265,6 +268,7 @@ def run_pipeline(
         stored.error = next((s.reason for s in results if s.status == "failed"), None)
         stored.details = {
             "force": force,
+            "ignore_quality_gate": ignore_quality_gate,
             "counts": result.counts,
             "steps": [
                 {

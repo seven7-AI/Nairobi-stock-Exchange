@@ -1095,3 +1095,59 @@ rows, the profile from a populated store (as-of dates, bank `not_applicable` mar
 forecasts absent from the daily pipeline, a delisted instrument's notes, an earlier
 as-of with nothing stored), `render_profile`, CLI (`research KCB`, `--json`, unknown
 ticker exits 1).
+
+## #22 Production hardening  ✅ 2026-09-16
+
+**Quality gate in the daily pipeline.** The `quality` step now reads back the
+error-severity findings its own run created (`new_error_findings(session, run_id)`) and,
+when `AnalyticsConfig.quality.halt_on_new_errors` (default 1) of them appear, raises
+`DataQualityGateError` before any engine runs: the step row is `failed` with the first
+three findings named, every dependent step is `skipped`, `jobs status` shows it, and
+the next morning's run — whose findings are by then *known* — proceeds. The very
+first run on a store has no baseline (every finding is new by construction), so it
+reports and continues; known, open defects never halt the pipeline, each engine
+already carries them in its reasons.
+Override for one run with `jobs daily --ignore-quality-gate` (recorded in the run's
+details), disable with `halt_on_new_errors = 0` (a config change, so a new calc
+version). `JobContext.ignore_quality_gate`, `run_pipeline(..., ignore_quality_gate=)`;
+the Celery wrapper and cron script call the same function unchanged.
+
+**Failure-scenario tests** (`app/tests/unit/test_hardening.py`): a missing scraper
+database is an `ExternalServiceError` before any job row exists; an empty universe runs
+the daily and weekly pipelines to completion writing nothing (the regime step now
+stores `missing` rows naming the absent index instead of raising); a ticker with only some statements gets
+`missing` metrics naming the statement, not zeros; a store held by another writer
+(`BUSY_TIMEOUT_SECONDS` shortened) waits and then fails the step cleanly with the
+`database is locked` reason recorded; the quality gate halts when the next scrape lands a
+broken row (day low above day high) and the override computes anyway; a step that raises is recorded as `failed` and its
+dependents `skipped`; the analytics migration chain walks down and up one revision at a
+time from head; no `os.environ` and no credential-shaped literal anywhere under
+`app/web` / `app/cli`; keys set on `Settings` never reach a log line
+(`redact_event`).
+
+**Docs.** `docs/quant-engine.md` gains the end-to-end runbook (scrape → upgrade →
+classify → jobs → read → backtest) with the measured timings, the quality-gate
+semantics and a failure-mode table. The scraper repository's `docs/STATUS.md` gets a
+"Phase 13" entry describing what the engine reads, the daily chain and the statement
+coverage to date.
+
+**Live runbook** (2026-09-16 07:25–07:46 EAT+0, this branch's CLI on the live scraper
+DB — 287,978 observations, 102 instruments, statements for 17 tickers — and the live
+analytics store; `nice 19` on a box at load average 10–12, so wall times include
+~60 s of interpreter start-up per command):
+
+| Step | Wall | Result |
+|---|---|---|
+| `analytics upgrade` | 60 s | store already at head `20260915_0013`, no-op |
+| `analytics classify` | 43 s | 102 classifications rewritten identically |
+| `jobs daily` (run 114) | 5 m 42 s | 10/10 succeeded — quality 41.6 s, 0 new findings (319 known open; gate silent), returns 1,020 rows / 46.6 s, momentum 2,346 / 36.2 s, risk 1,428 / 53.7 s, liquidity 1,122 / 29.3 s, valuation metrics 544 / 35.8 s, factors 623 / 0.7 s, rankings 89 (13 scored) / 0.4 s, fair value 58 (85 skipped) / 35.3 s, scenarios 180 / 23.3 s |
+| `jobs fundamentals` (run 135) | 2 m 27 s | 5/5 — fundamentals 680 rows for 17 tickers / 31.2 s, then valuation metrics, factors, rankings, fair value recomputed because their inputs changed |
+| `jobs weekly` (run 146) | 5 m 29 s | 6/6 — regime 1 (`unavailable`, ^NASI 624 days stale) / 13.1 s, forecasts 1,424 / 33.3 s, evaluation 0 (nothing matured) / 62.5 s, Monte Carlo 712 / 141.5 s, factors + rankings refreshed |
+| `jobs status` | 2 m 2 s | revision = head, 20 tables (market_metrics 23,580 · forecasts 15,152 · factor_scores 3,087 · fundamental_metrics 3,844 · stock_rankings 352 · valuations 182 · regimes 207 · simulations 3,548), every job's last run `succeeded` as of 2026-09-16, 5 registry rows |
+| `research KCB` | 2 m 16 s | the #21 profile with every as-of now 2026-09-16; score 55.23 Watch, ranks 7/3/3, intrinsic 99.56 vs 92.25 — unchanged, as the inputs are |
+| `jobs daily` again (run 159) | 1 m 23 s | 10/10 `skipped — inputs unchanged`; no rows written |
+
+The cron chain (`09:40` daily, `10:10` fundamentals, Saturday `10:30` weekly) stays as
+installed in #19; a full morning costs about 14 minutes of compute on this box and the
+second run of a day about a minute. The backtest is not part of the daily chain (the
+2013–2024 run in #18 took hours) and its stored results are unchanged.

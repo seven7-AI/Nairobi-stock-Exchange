@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.web.db.analytics.models import DataQualityFinding
+from app.web.db.analytics.models import DataQualityFinding, JobRun, JobStatus
 from app.web.db.analytics.models.mixins import utcnow
 
 if TYPE_CHECKING:
@@ -96,4 +96,34 @@ def open_findings(session: Session, *, severity: str | None = None) -> list[Data
     return list(session.execute(stmt).scalars())
 
 
-__all__ = ["ReconcileResult", "open_findings", "reconcile_findings"]
+def has_earlier_quality_run(session: Session, run_id: int, job_name: str) -> bool:
+    """Whether a quality run completed before ``run_id`` - the baseline that makes
+    "new" meaningful. On the very first run every finding is new by construction."""
+    stmt = select(JobRun.id).where(
+        JobRun.job_name == job_name, JobRun.id < run_id, JobRun.status == JobStatus.SUCCEEDED
+    )
+    return session.execute(stmt.limit(1)).first() is not None
+
+
+def new_error_findings(session: Session, run_id: int) -> list[DataQualityFinding]:
+    """Error-severity findings first seen by ``run_id`` (still open)."""
+    return list(
+        session.execute(
+            select(DataQualityFinding)
+            .where(
+                DataQualityFinding.first_seen_run_id == run_id,
+                DataQualityFinding.severity == "error",
+                DataQualityFinding.resolved_at.is_(None),
+            )
+            .order_by(DataQualityFinding.id)
+        ).scalars()
+    )
+
+
+__all__ = [
+    "ReconcileResult",
+    "has_earlier_quality_run",
+    "new_error_findings",
+    "open_findings",
+    "reconcile_findings",
+]

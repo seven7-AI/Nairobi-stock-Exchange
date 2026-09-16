@@ -93,6 +93,10 @@ class DataQualityConfig(BaseModel):
     ohlc_tolerance: float = Field(default=0.005, ge=0.0, le=0.1)
     #: Instruments with fewer observations than this are reported, not analysed.
     min_observations: int = Field(default=20, ge=1)
+    #: The daily pipeline halts before computing when a quality run creates at least
+    #: this many NEW error-severity findings (0 disables the gate). Known, still-open
+    #: defects never halt it - they are reported, and the engines handle them.
+    halt_on_new_errors: int = Field(default=1, ge=0)
 
 
 class MomentumConfig(BaseModel):

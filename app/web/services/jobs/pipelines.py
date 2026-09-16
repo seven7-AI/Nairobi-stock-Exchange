@@ -12,21 +12,47 @@ rankings. Forecast evaluation always runs: it acts on time passing.
 
 from __future__ import annotations
 
+from app.web.db.analytics import analytics_session
 from app.web.services.jobs.runner import JobContext, Step, StepBody, StepOutcome
 
 
+class DataQualityGateError(RuntimeError):
+    """New error-severity findings appeared; the pipeline stops before computing."""
+
+
 def _dq(ctx: JobContext) -> StepOutcome:
-    from app.web.services.analytics.quality.runner import run_data_quality
+    from app.web.db.analytics.services.data_quality import (
+        has_earlier_quality_run,
+        new_error_findings,
+    )
+    from app.web.services.analytics.quality.runner import JOB_NAME, run_data_quality
 
     result = run_data_quality(ctx.settings, ctx.source, ctx.config)
-    return StepOutcome(
-        result.reconciled.created,
-        {
-            "findings": len(result.findings),
-            "by_severity": result.counts_by_severity,
-            "resolved": result.reconciled.resolved,
-        },
-    )
+    labels: list[str] = []
+    baseline = False
+    if result.run_id:
+        with analytics_session(ctx.settings) as session:
+            baseline = has_earlier_quality_run(session, result.run_id, JOB_NAME)
+            labels = [
+                f"{f.check_name} {f.ticker_symbol or ''} {f.detail}"[:120]
+                for f in new_error_findings(session, result.run_id)
+            ]
+    details = {
+        "findings": len(result.findings),
+        "by_severity": result.counts_by_severity,
+        "resolved": result.reconciled.resolved,
+        "new_errors": labels,
+    }
+    # The first run on a store has no baseline: every finding is new, so it is
+    # reported, not gated. From the second run on, new errors halt the pipeline.
+    limit = ctx.config.quality.halt_on_new_errors
+    if baseline and limit and len(labels) >= limit and not ctx.ignore_quality_gate:
+        raise DataQualityGateError(
+            f"{len(labels)} new error-severity finding(s) - "
+            + "; ".join(labels[:3])
+            + " (rerun with --ignore-quality-gate to compute anyway)"
+        )
+    return StepOutcome(result.reconciled.created, details)
 
 
 def _compute(name: str) -> StepBody:

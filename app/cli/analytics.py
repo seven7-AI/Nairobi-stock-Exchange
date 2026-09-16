@@ -748,11 +748,20 @@ jobs_app = typer.Typer(help="The live pipelines: daily, fundamentals, weekly; an
 analytics_app.add_typer(jobs_app, name="jobs")
 
 
-def _run_pipeline_command(name: str, as_of: str | None, force: bool) -> None:
+def _run_pipeline_command(
+    name: str, as_of: str | None, force: bool, ignore_quality_gate: bool = False
+) -> None:
     from app.web.services.jobs import run_pipeline
 
     settings, source = _scraper_source()
-    result = run_pipeline(settings, source, name, as_of=_parse_day(as_of), force=force)
+    result = run_pipeline(
+        settings,
+        source,
+        name,
+        as_of=_parse_day(as_of),
+        force=force,
+        ignore_quality_gate=ignore_quality_gate,
+    )
     table = Table(title=f"pipeline {name} as of {result.as_of} (run {result.run_id})")
     for column in ("Step", "Status", "Rows", "Seconds", "Reason"):
         table.add_column(column, justify="right" if column in ("Rows", "Seconds") else "left")
@@ -772,10 +781,13 @@ def jobs_daily_command(
     force: bool = typer.Option(
         False, "--force", help="Re-run steps even when inputs are unchanged"
     ),
+    ignore_quality_gate: bool = typer.Option(
+        False, "--ignore-quality-gate", help="Compute even when new error findings appeared"
+    ),
 ) -> None:
     """After the scrape: quality, returns, momentum, risk, liquidity, multiples, factors,
     rankings, fair value, scenarios."""
-    _run_pipeline_command("daily", as_of, force)
+    _run_pipeline_command("daily", as_of, force, ignore_quality_gate)
 
 
 @jobs_app.command("fundamentals")
