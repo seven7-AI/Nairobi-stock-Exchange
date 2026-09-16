@@ -51,6 +51,7 @@ SENSITIVE_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^ey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.?"),  # JWT
     re.compile(r"^sb[a-z]?_[A-Za-z0-9_-]{16,}"),  # Supabase key
     re.compile(r"^\$2[aby]\$\d{2}\$"),  # bcrypt hash
+    re.compile(r"^sk-ant-[A-Za-z0-9_-]{8,}"),  # Anthropic API key
 )
 
 MAX_REDACTION_DEPTH = 6
