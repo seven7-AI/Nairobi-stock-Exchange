@@ -1,0 +1,29 @@
+# The public NSE analytics dashboard: FastAPI in standalone mode + the built SPA on
+# port 4747, as a *user* systemd unit (this host runs its services that way; the
+# user has lingering enabled). Rendered and installed by
+# scripts/install_dashboard_service.sh - the placeholders are filled in there.
+[Unit]
+Description=NSE analytics public dashboard (FastAPI + SPA on :4747)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kevin/Nairobi-stock-Exchange
+# Optional secrets / overrides; the dashboard needs neither Postgres nor Redis.
+EnvironmentFile=-/home/kevin/Nairobi-stock-Exchange/.env
+EnvironmentFile=-/home/kevin/Nairobi-stock-Exchange/deployment/systemd/nse-dashboard.env
+Environment=DASHBOARD_STANDALONE=true
+Environment=DASHBOARD_PUBLIC=true
+# "staging": the production validator demands a JWT secret that this port never uses.
+Environment=ENVIRONMENT=staging
+Environment=LOG_LEVEL=INFO
+ExecStart=/home/kevin/.local/bin/uv run --no-sync uvicorn app.web.main:app --host 0.0.0.0 --port 4747 --workers 1 --proxy-headers --no-server-header
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

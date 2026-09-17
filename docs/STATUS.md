@@ -1488,3 +1488,31 @@ on a local port — `/` and `/stocks/KCB` 200 `text/html` with `cache-control:
 no-cache`, the CSP and `nosniff`; `/assets/index-*.js` 200; `/api/v1/dashboard/nope`
 404 JSON; `POST /api/v1/auth/login` 404; `/health/ready` → `status ok`,
 `analytics_store.revision 20260915_0014`, scraper `ok` 1.55 h old, `dashboard: true`.
+
+## #52 Deploy the dashboard on port 4747 as a user systemd service  ✅ 2026-09-17
+
+`deployment/systemd/nse-dashboard.service` (a **user** unit — this host runs its other
+services that way and `kevin` has lingering enabled; placeholders `__REPO_ROOT__`,
+`__UV_BIN__`, `__PORT__`; `EnvironmentFile=-` for `.env` and an optional
+`deployment/systemd/nse-dashboard.env`; `DASHBOARD_STANDALONE=true`,
+`DASHBOARD_PUBLIC=true`, `ENVIRONMENT=staging` — the production validator would demand
+a JWT secret this port never uses; `uv run --no-sync uvicorn app.web.main:app --host
+0.0.0.0 --port 4747 --workers 1 --proxy-headers --no-server-header`; `Restart=always`,
+`NoNewPrivileges`, `PrivateTmp`). `scripts/install_dashboard_service.sh`
+(`--print | --verify | --build | --restart`; refuses to install while something else
+listens on the port; requires `Linger=yes`; renders into
+`~/.config/systemd/user/`, `daemon-reload`, `enable --now`, waits for `/health`;
+the rendered copy is committed as `deployment/systemd/nse-dashboard.installed`).
+Unit tests pin the template's contract and the rendering. `docs/quant-engine.md`
+gains the "Serving the dashboard on port 4747" section. `.gitignore`: the env
+override, `dashboard/node_modules`, `dashboard/dist`, `dashboard/coverage`.
+
+Live (2026-09-17 11:51 EAT+0): the leftover container
+`excel-preview-debug_excel-preview-debug_1` that had held 0.0.0.0:4747 for four months
+was stopped and removed (agreed with the user); the installer rendered and enabled
+`nse-dashboard`, which answered `/health` within 30 s; `--verify` → enabled, active,
+installed unit current, health OK (the SPA build arrives with #53). From the public
+address: `http://194.195.87.62:4747/health` 200, `/api/v1/dashboard/status/version`
+200 with `ETag` and `cache-control: no-cache` and no `server` header,
+`/api/v1/auth/login` 404 (no platform routers), `/docs` 200. `--restart` brought it
+back with `/health/ready` → `status ok`, store `20260915_0014`, scraper `ok`.
