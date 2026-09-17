@@ -109,6 +109,13 @@ require_roles(*roles) -> Depends()   # validates JWT claims against allowed role
 **Scope checks happen at the router level, not inside business logic.** A service function
 must never inspect a role; it receives an already-authorized caller context.
 
+**The one deliberate exception: `/api/v1/dashboard/*`** (`app/web/api/routers/dashboard/`) is
+public and read-only — no roles, no token. It serves derived analytics and market prices
+from the two SQLite files only (`app/web/services/dashboard/`), never Postgres, Redis,
+users or organizations, and never a setting, filesystem path or provenance record. It is
+mounted only when `DASHBOARD_PUBLIC` is true, and a unit test fails the build if either
+package imports a platform model or a Postgres/Redis dependency.
+
 > Before touching auth: `codegraph explore "require_roles get_current_user jwt.py rbac.py"`
 
 ---

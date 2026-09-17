@@ -23,6 +23,7 @@ from app.web.api.middleware import RequestContextMiddleware
 from app.web.api.routers.analytics.views import router as analytics_router
 from app.web.api.routers.auth.views import router as auth_router
 from app.web.api.routers.connectors.views import router as connectors_router
+from app.web.api.routers.dashboard.views import router as dashboard_router
 from app.web.api.routers.indicators.views import router as indicators_router
 from app.web.api.routers.instruments.views import router as instruments_router
 from app.web.api.routers.market_data.views import router as market_data_router
@@ -112,6 +113,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api = APIRouter(prefix=resolved.api_v1_prefix)
     for router in DOMAIN_ROUTERS:
         api.include_router(router)
+    if resolved.dashboard_public:
+        # Unauthenticated, read-only, SQLite-only - see routers/dashboard/views.py.
+        api.include_router(dashboard_router)
     app.include_router(api)
     app.include_router(_ops_router(resolved))
 

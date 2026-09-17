@@ -178,6 +178,16 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
 
+    # --- public dashboard (read-only, unauthenticated by design) -----------
+    #: Mount ``/api/v1/dashboard`` - derived analytics and prices from the two
+    #: SQLite files only. The single documented exception to the RBAC rule.
+    dashboard_public: bool = Field(default=True, alias="DASHBOARD_PUBLIC")
+    #: Cached dashboard payloads are recomputed when either SQLite file changes or
+    #: after this many seconds, whichever comes first.
+    dashboard_cache_max_age_seconds: float = Field(
+        default=300.0, ge=0.0, alias="DASHBOARD_CACHE_MAX_AGE_SECONDS"
+    )
+
     # --- analytics --------------------------------------------------------
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     historical_days_back: int = Field(

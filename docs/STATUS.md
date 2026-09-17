@@ -1250,3 +1250,83 @@ empty (the `supabase` source and the API's client already handle "not configured
 Operator guide: `docs/quant-engine.md`. Data sources and their defects:
 `docs/data-sources.md`. The scraper's view of the hand-over: its `docs/STATUS.md`
 Phase 13.
+
+# Dashboard
+
+Tracking epic: [#57](https://github.com/seven7-AI/Nairobi-stock-Exchange/issues/57). A
+simple, live web dashboard over the engine, public on the server's IP. Decisions taken
+with the user: a **public read-only** `/api/v1/dashboard/*` with no login (the single
+documented exception to the RBAC rule; SQLite only); the dashboard on its **own port
+4747** as a user systemd service (80/443 belong to another project's nginx); **React +
+Vite** served by FastAPI; the geographic-exposure block stays `unavailable` until the
+scraper captures the company page.
+
+## #48 Dashboard API core: status, version, overview, market  ✅ 2026-09-17
+
+`app/web/api/routers/dashboard/{views,schema}.py` — mounted behind `DASHBOARD_PUBLIC`
+(default true), no `require_roles`, `GET` only, every read in the threadpool through
+`app/web/services/dashboard/`. The layering rule is enforced by a test that greps both
+packages for platform models, `SessionDep`, Redis or Supabase imports.
+
+- **`cache.py`** — `StoreStamp` = the modification times of the analytics store and the
+  scraper database (WAL-aware); `DashboardCache.get_or_compute(key, stamp, compute)`
+  serves a cached payload while the stamp is unchanged and the entry is younger than
+  `DASHBOARD_CACHE_MAX_AGE_SECONDS` (300). No `lru_cache` — it cannot see a file change.
+  Every response carries `X-Store-Version`.
+- **`status.py`** — `build_status` on top of `job_status` (the CLI's `jobs status`):
+  store revision/head/`migrated`, tables and last-update stamps, each pipeline's last
+  run and **last success** (`summaries.latest_runs`) with the step table from the run's
+  details, every job's last run, the scraper's `health_check` (location removed), input
+  watermarks, the cron chain (`CRON_SCHEDULE`, pinned to
+  `scripts/install_analytics_cron.sh` by a unit test), the model registry.
+  `build_version` is the cheap poll: stamps, `latest_trade_date()` and the latest
+  ranking date. `JobRow` sanitises: first line of an error only, filesystem paths
+  blanked, details whitelisted to `steps/counts/force/ignore_quality_gate`.
+- **`market.py`** — `latest_quotes` (cached): one `Quote` per classified equity —
+  scraped price, change, volume, 52-week range, market cap and profile facts from
+  `stockanalysis_stocks` when the scraper has the ticker, the last canonical close from
+  `stock_observations` always, and every scraped field `unavailable` with the reason
+  ("not on stockanalysis; last observation 2019-10-11") when it does not.
+  `build_market`: sector medians of `return_1d/1w/1m` from `market_metrics` — every
+  sector listed, `unavailable` when no member has a known value — coverage counts per
+  metric, top/bottom ten movers by scraped change, and the benchmark indices'
+  availability (`^NASI`, `^N20I`: known within 14 days of the date, otherwise
+  `unavailable` naming the last observation, with the last level).
+- **`overview.py`** — counts and dates: tracked / scraped / classified instruments, the
+  latest trade date and how many have it (`latest_trade_date_coverage()`), per result
+  table the status counts on its latest date and `latest_known_as_of`
+  (`summaries.status_counts_on_latest`, `latest_known_as_of`), open findings by
+  severity, the pipelines block.
+- `NseScraperSource.latest_trade_date()` / `latest_trade_date_coverage()`;
+  `app/web/db/analytics/services/summaries.py`; `Settings.dashboard_public`,
+  `dashboard_cache_max_age_seconds`; CLAUDE.md §2 exception paragraph;
+  `docs/quant-engine.md` section.
+
+Tests (no Postgres needed): every endpoint 200 without a token and free of filesystem
+paths; the version poll (`ETag`, 304, changes when the store file is touched); status
+(migrated store, pipelines daily/fundamentals with steps, weekly never run, schedule and
+timezone, watermarks, cron order, models); overview on the fixture store as of
+2024-12-31 (8 instruments on the newest scrape day 2026-09-13, 10 equities, 8 scraped,
+point-in-time ranking counts, no forecasts → `latest_known_as_of` None); market (KCB
+price 94.00 and volume 375,298 from the scrape, founded 1896; KENO present with
+`unavailable` reasons and no zeros; Banking median known; indices known on their last
+day 2024-12-31 and stale with the reason after the gap); 404 on an empty store; the
+router switched off by `DASHBOARD_PUBLIC=false`; unit tests for the stamp, the cache
+(hit/miss/age/bound/threads), the cron pin, error sanitising, the equity universe and
+the no-platform-imports rule; a `realdata` test on the live store.
+
+Live (2026-09-17, the real store and scraper DB through the app in-process, box at load
+30): `/status/version` → `latest_market_date 2026-09-16`, `latest_analytics_date
+2026-09-16`, `ETag` honoured (304); `/overview` → 92 tracked (63 scraped by
+stockanalysis, 92 classified equities), 63 instruments with a row on 2026-09-16,
+findings error 1 / warning 217 / info 94, store `20260915_0014` migrated, rankings
+known 19 / unavailable 70, forecasts 1,424 `unavailable` with `latest_known_as_of
+2024-12-31`, pipelines daily/fundamentals/weekly all `succeeded` as of 2026-09-16;
+`/market` (94 kB, 0.8 s cached / 6.3 s cold) → ^NASI and ^N20I `unavailable` ("last
+observation 2024-12-31 is 624 days before 2026-09-16", last levels 123.48 / 2,010.65),
+coverage `return_1d` known 50 / zero 13 / unavailable 39, sector 1-day medians led by
+Telecommunication +1.81 % (1 of 2 known), top movers SKL +7.51 %, EGAD +5.35 %, bottom
+TCL −6.67 %; KCB price 90.00, change −2.44 %, volume 375,298, 52-week 52.50–101.00,
+market cap KES 289.2 bn, industry Commercial Banks, founded 1896, 11,253 employees;
+29 classified equities have no stockanalysis row (ACCS, ARM, BAUM, …) and appear with
+`unavailable` reasons. No string leaving the API contains a filesystem path.

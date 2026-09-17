@@ -87,6 +87,23 @@ uv run nse-analysis analytics plot all                     # diagrams/<kind>/ (#
 uv run nse-analysis analytics narrate KCB                  # AI research note (#23)
 ```
 
+## The public dashboard API
+
+`/api/v1/dashboard/*` (`app/web/api/routers/dashboard/`, services in
+`app/web/services/dashboard/`) is read-only and needs no token — the one exception to
+the RBAC rule, gated by `DASHBOARD_PUBLIC`. It reads the analytics store and the
+scraper's database only, and every number it serves is `{value, status, reason}`.
+
+| Endpoint | What |
+|---|---|
+| `GET /status/version` | file stamps of both databases, latest market and analytics dates; `ETag` / `If-None-Match` → 304 — the cheap poll |
+| `GET /status` | store revision and tables, each pipeline's last run and last success with its steps, the scraper's health, watermarks, the cron chain, the model registry |
+| `GET /overview` | tracked / scraped / classified counts, the latest market date and how many instruments have it, per-table status counts on the latest date with `latest_known_as_of`, open findings by severity |
+| `GET /market?as_of=` | a quote per classified equity (scraped price, change, volume, 52-week range, market cap, last close), sector medians for 1d/1w/1m, movers, index availability |
+
+Payloads are cached in-process until either SQLite file changes (`X-Store-Version`
+header) or `DASHBOARD_CACHE_MAX_AGE_SECONDS` elapses.
+
 ## The AI narrative layer
 
 `app/web/services/analytics/ai/narrative.py` turns the stored profile into a short
