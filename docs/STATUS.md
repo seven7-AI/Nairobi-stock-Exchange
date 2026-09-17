@@ -1516,3 +1516,42 @@ address: `http://194.195.87.62:4747/health` 200, `/api/v1/dashboard/status/versi
 200 with `ETag` and `cache-control: no-cache` and no `server` header,
 `/api/v1/auth/login` 404 (no platform routers), `/docs` 200. `--restart` brought it
 back with `/health/ready` → `status ok`, store `20260915_0014`, scraper `ok`.
+
+## #53 Dashboard frontend: scaffold, shell, API layer, Overview and System  ✅ 2026-09-17
+
+`dashboard/` — Vite 8 + React 19 + TypeScript 6, four runtime dependencies (react,
+react-dom, react-router-dom, recharts), oxlint + `tsc -b` + Vitest/jsdom. Built to
+`dashboard/dist` (gitignored) and served by the app from #51.
+
+- **API layer** — `src/api/types.ts` holds every response shape of
+  `/api/v1/dashboard` in one file; `client.ts` (`fetchJson`, `ApiError` carrying the
+  server's message); `api.ts` one function per endpoint — pages never spell a URL.
+- **Live** — `VersionProvider` polls `/status/version` every 60 s (first poll on the
+  next tick, paused while hidden, manual refresh); `useApi(key, loader)` memoises per
+  `(key, store version)` and refetches on a version change while keeping the last
+  payload on screen; a header `LiveIndicator` shows the latest market date and when
+  analytics and the scrape last wrote, red when the API is unreachable.
+- **Primitives** — `Measure` (the one way a number renders: known → formatted by kind;
+  `zero` → "0" with a title; every other status → a labelled chip with the reason as
+  tooltip, never "0", "-" or blank), `Maybe`, `Percentile`, `StatusBadge` (tones for
+  job, model, classification and measure statuses), `Card`, `StatTile`, `DataTable`
+  (sort with unknown values last either way, search, `aria-sort`), `KeyValueList`,
+  `Disclaimer`, loading / error / empty states. Plain CSS with tokens for light and
+  dark (`prefers-color-scheme` and a `data-theme` stamp), a cards grid that collapses
+  to one column, tables in scroll wrappers, a nav strip that scrolls on narrow screens.
+- **Pages** — Overview (tiles for tracked / latest date / ranked / forecasts / open
+  findings / store, the data source, the pipelines' last run and last success, per-table
+  status counts, the live stamps) and System (store, source, cron chain, pipelines with
+  their steps, tables, jobs, models). Routes for the other pages exist as placeholders
+  until #54 and #55.
+- **Fixtures** are captured from the live API (`scripts/capture-fixtures.mjs` against a
+  running server, or in-process against the live store as done here; `manifest.json`
+  records endpoint, time, size and store version) — 12 real payloads, 1.3 MB.
+
+Tests (27 with the later issues; here: `Measure` for all six statuses and the signed
+colour, formatting helpers, `DataTable` sort/search, Overview and System rendered
+from the captured payloads, the API error with a retry, and version polling — a
+changed version refetches mounted views, an unchanged one does not).
+
+Build: 89 kB of gzipped JavaScript for the shell and these two pages (vendor 79 kB);
+Recharts is a separate chunk loaded only by pages that draw a chart.

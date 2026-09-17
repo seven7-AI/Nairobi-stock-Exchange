@@ -1,0 +1,235 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.card-head .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+}
+.tile .label {
+  color: var(--text-2);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+.tile .value {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tile .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.badge--ok {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--good) 15%, transparent);
+  color: var(--pos);
+}
+.badge--warn {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--text);
+}
+.badge--error {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--critical) 15%, transparent);
+  color: var(--neg);
+}
+.badge--info {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.measure {
+  font-variant-numeric: tabular-nums;
+}
+.measure--na {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  cursor: help;
+}
+.measure .reason {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: normal;
+  max-width: 42ch;
+}
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px var(--space-3);
+  margin: 0;
+}
+.kv dt {
+  color: var(--text-2);
+}
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 90px;
+}
+.pct .bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pct .bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.state {
+  padding: var(--space-4);
+  color: var(--text-2);
+}
+.state.error {
+  color: var(--neg);
+}
+.skeleton {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface-2), var(--surface), var(--surface-2));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  margin: 8px 0;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.disclaimer {
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+  margin-top: var(--space-3);
+}
+th button {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+th[aria-sort="ascending"] button::after {
+  content: " ▲";
+  font-size: 9px;
+}
+th[aria-sort="descending"] button::after {
+  content: " ▼";
+  font-size: 9px;
+}
+.steps {
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 2px var(--space-3);
+  font-size: 12px;
+}
+details summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip {
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  white-space: normal;
+}
+.range-bar {
+  position: relative;
+  height: 28px;
+  margin: var(--space-2) 0;
+}
+.range-bar .track {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+}
+.range-bar .band {
+  position: absolute;
+  top: 10px;
+  height: 8px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 4px;
+}
+.range-bar .tick {
+  position: absolute;
+  top: 6px;
+  width: 2px;
+  height: 16px;
+  background: var(--accent);
+}
+.range-bar .price {
+  position: absolute;
+  top: 3px;
+  width: 10px;
+  height: 22px;
+  margin-left: -5px;
+  border-radius: 5px;
+  background: var(--text);
+  border: 2px solid var(--surface);
+}
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-2);
+}
