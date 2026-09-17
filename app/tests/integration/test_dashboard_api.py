@@ -430,3 +430,126 @@ async def test_price_history_lists_gaps_and_sources(dashboard_client: AsyncClien
     ).status_code == 422
     response = await dashboard_client.get(f"{BASE}/stocks/NOPE")
     assert response.status_code == 404 and "not an instrument" in response.json()["message"]
+
+
+# --- #50: analytics, forecasts, signals, backtests ----------------------------------------
+
+
+async def test_analytics_table_lists_the_ranked_universe(dashboard_client: AsyncClient) -> None:
+    body = (await dashboard_client.get(f"{BASE}/analytics")).json()
+    assert body["as_of"] == AS_OF.isoformat() and body["model"].startswith("factor-model")
+    assert body["available_dates"] == [AS_OF.isoformat()]
+    assert body["latest_known_as_of"] == AS_OF.isoformat()
+    assert set(body["factor_names"]) == {
+        "value",
+        "quality",
+        "growth",
+        "momentum",
+        "dividend",
+        "risk",
+        "liquidity",
+    }
+    rows = body["rows"]
+    ranks = [r["market_rank"] for r in rows]
+    known = [r for r in ranks if r is not None]
+    assert known == sorted(known) and ranks[: len(known)] == known  # ranked first, unranked last
+    kcb = next(r for r in rows if r["ticker_symbol"] == "KCB")
+    assert kcb["sector"] == "Banking" and set(kcb["factors"]) == set(body["factor_names"])
+    assert kcb["factors"]["quality"]["score"]["status"] in ("known", "unavailable")
+    assert set(kcb["relative"]) == {
+        f"relative_{w}_vs_{s}" for w in ("1m", "3m", "6m", "12m") for s in ("market", "sector")
+    }
+    assert kcb["relative"]["relative_12m_vs_market"]["status"] in ("known", "unavailable")
+    assert all(r["overall"]["reason"] for r in rows if r["overall"]["value"] is None)
+    assert sum(body["coverage"]["quality"].values()) == len(rows)
+    banks = (await dashboard_client.get(f"{BASE}/analytics", params={"sector": "banking"})).json()
+    assert {r["sector"] for r in banks["rows"]} == {"Banking"} and len(banks["rows"]) >= 3
+    assert (
+        await dashboard_client.get(f"{BASE}/analytics", params={"as_of": "2001-01-01"})
+    ).status_code == 404
+
+
+async def test_forecasts_are_ranges_with_availability(dashboard_client: AsyncClient) -> None:
+    # the weekly pipeline never ran on this store
+    assert (await dashboard_client.get(f"{BASE}/forecasts")).status_code == 404
+
+
+async def test_signals_tie_back_to_rankings(dashboard_client: AsyncClient) -> None:
+    body = (await dashboard_client.get(f"{BASE}/signals")).json()
+    table = (await dashboard_client.get(f"{BASE}/analytics")).json()
+    scores = {r["ticker_symbol"]: r for r in table["rows"]}
+    assert body["as_of"] == table["as_of"] and body["universe"] == len(table["rows"])
+    assert body["scored"] + body["unscored"] == body["universe"]
+    buckets = ("buy_candidates", "watch", "neutral", "weak", "avoid")
+    total = 0
+    for bucket in buckets:
+        for item in body[bucket]:
+            total += 1
+            row = scores[item["ticker_symbol"]]
+            assert item["overall_score"]["value"] == row["overall"]["value"]
+            assert (
+                item["classification"] == row["classification"]
+                and item["link"] == f"/stocks/{item['ticker_symbol']}"
+            )
+    assert total == body["scored"]
+    for trap in body["value_traps"]:
+        assert trap["extra"]["risk"] >= 1 and trap["extra"]["risk_label"] in ("medium", "high")
+        assert scores[trap["ticker_symbol"]]["value_trap_risk"] == trap["extra"]["risk"]
+    for comp in body["compounders"]:
+        assert comp["extra"]["compounder_score"] >= body["compounder_threshold"]
+    for v in body["valuation_upside"]:
+        assert v["upside"] > 0 and v["intrinsic"]["status"] == "known"
+    assert all(f["severity"] in ("error", "warning", "info") for f in body["risk_flags"])
+    assert any(f["kind"] == "data_quality" for f in body["risk_flags"])
+    assert "Not investment advice" in body["disclaimer"]
+
+
+async def test_backtests_are_empty_but_well_shaped(dashboard_client: AsyncClient) -> None:
+    body = (await dashboard_client.get(f"{BASE}/backtests")).json()
+    assert body == {"items": [], "next_cursor": None, "total": 0}
+    assert (await dashboard_client.get(f"{BASE}/backtests/1")).status_code == 404
+
+
+@pytest.mark.realdata
+async def test_live_forecasts_and_backtests() -> None:
+    """The real store holds forecasts (known up to 2024-12-31) and four backtest runs."""
+    from app.web.config import get_settings
+    from app.web.main import create_app
+
+    keys = ("ANALYTICS_DB_PATH", "NSE_SCRAPER_DB_PATH", "NSE_SCRAPER_PATH", "DASHBOARD_PUBLIC")
+    previous = {k: os.environ.pop(k, None) for k in keys}
+    get_settings.cache_clear()
+    reset_dashboard_cache()
+    try:
+        settings = get_settings()
+        if not settings.analytics_db_path.exists() or not settings.scraper_database_path.exists():
+            pytest.skip("no live databases")
+        app = create_app()
+        async with (
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c,
+            app.router.lifespan_context(app),
+        ):
+            fc = (await c.get(f"{BASE}/forecasts", params={"ticker": "KCB"})).json()
+            assert fc["latest_known_as_of"] is not None and fc["items"][0]["ticker_symbol"] == "KCB"
+            assert set(fc["items"][0]["models"]) >= {"naive", "ar1"}
+            assert fc["accuracy"]["ar1"]["12m"]["n"] > 0
+            known = (
+                await c.get(
+                    f"{BASE}/forecasts", params={"ticker": "KCB", "as_of": fc["latest_known_as_of"]}
+                )
+            ).json()
+            cell = known["items"][0]["models"]["ar1"]["12m"]
+            assert (
+                cell["expected_return"]["status"] == "known"
+                and cell["q05"] < cell["q50"] < cell["q95"]
+            )
+            runs = (await c.get(f"{BASE}/backtests")).json()
+            assert runs["total"] >= 1
+            detail = (await c.get(f"{BASE}/backtests/{runs['items'][0]['run_id']}")).json()
+            assert len(detail["equity"]) > 1000 and detail["max_drawdown"]["status"] == "known"
+    finally:
+        for key, value in previous.items():
+            if value is not None:
+                os.environ[key] = value
+        get_settings.cache_clear()
+        reset_dashboard_cache()

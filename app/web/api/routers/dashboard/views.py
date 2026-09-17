@@ -23,9 +23,14 @@ from starlette.concurrency import run_in_threadpool
 
 from app.web.api.deps import MarketDataSourceDep, SettingsDep
 from app.web.api.routers.dashboard.schema import (
+    AnalyticsOut,
+    BacktestDetailOut,
+    BacktestPageOut,
+    ForecastsOut,
     MarketOut,
     OverviewOut,
     PriceHistoryOut,
+    SignalsOut,
     StatementsOut,
     StatusOut,
     StockDetailOut,
@@ -42,6 +47,10 @@ from app.web.services.dashboard import (
     get_dashboard_cache,
     store_stamp,
 )
+from app.web.services.dashboard.analytics import build_analytics_table
+from app.web.services.dashboard.backtests import backtest_detail, list_backtests
+from app.web.services.dashboard.forecasts import build_forecasts
+from app.web.services.dashboard.signals import build_signals
 from app.web.services.dashboard.stocks import (
     Interval,
     PriceRange,
@@ -251,6 +260,111 @@ async def stock_statements(
     )
     _no_store(response, version)
     return StatementsOut(**data.as_dict())
+
+
+@router.get("/analytics", response_model=AnalyticsOut)
+async def analytics(
+    response: Response,
+    settings: SettingsDep,
+    as_of: date_type | None = AsOf,
+    sector: str | None = Query(default=None, max_length=64),
+) -> AnalyticsOut:
+    """Every ranked instrument on a date: composite score, factor scores with market /
+    sector / industry percentiles, relative return metrics; unscored rows carry reasons."""
+    data, version = await run_in_threadpool(
+        _cached,
+        settings,
+        ("analytics", as_of, sector),
+        lambda: build_analytics_table(settings, as_of=as_of, sector=sector),
+    )
+    if data is None:
+        raise ResourceNotFoundError(
+            "No rankings stored for that date. Run the daily pipeline first."
+        )
+    _no_store(response, version)
+    return AnalyticsOut(**data.as_dict())
+
+
+@router.get("/forecasts", response_model=ForecastsOut)
+async def forecasts(
+    response: Response,
+    settings: SettingsDep,
+    source: MarketDataSourceDep,
+    as_of: date_type | None = AsOf,
+    ticker: str | None = Query(default=None, pattern=r"^\^?[A-Za-z0-9.&-]{1,24}$"),
+    model: str | None = Query(default=None, max_length=32),
+    horizon: int | None = Query(default=None, ge=1, le=60),
+) -> ForecastsOut:
+    """Model x horizon cells (quantiles, probabilities), scenarios and Monte Carlo for one
+    ticker, the regime, walk-forward accuracy per model. Ranges, never targets."""
+    scraper = _scraper(source)
+    symbol = ticker.upper() if ticker else None
+    data, version = await run_in_threadpool(
+        _cached,
+        settings,
+        ("forecasts", as_of, symbol, model, horizon),
+        lambda: build_forecasts(
+            settings, scraper, as_of=as_of, ticker=symbol, model=model, horizon=horizon
+        ),
+    )
+    if data is None:
+        raise ResourceNotFoundError("No forecasts stored yet. Run the weekly pipeline first.")
+    _no_store(response, version)
+    return ForecastsOut(**data.as_dict())
+
+
+@router.get("/signals", response_model=SignalsOut)
+async def signals(
+    response: Response,
+    settings: SettingsDep,
+    as_of: date_type | None = AsOf,
+    compounder_threshold: float = Query(default=70.0, ge=0.0, le=100.0),
+) -> SignalsOut:
+    """The ranking's conclusions regrouped: classification buckets, value traps with
+    their signals, compounders with their criteria, valuation upside / downside, risk
+    flags, factor combinations - each item with its numbers and a link to the stock."""
+    data, version = await run_in_threadpool(
+        _cached,
+        settings,
+        ("signals", as_of, compounder_threshold),
+        lambda: build_signals(settings, as_of=as_of, compounder_threshold=compounder_threshold),
+    )
+    if data is None:
+        raise ResourceNotFoundError(
+            "No rankings stored for that date. Run the daily pipeline first."
+        )
+    _no_store(response, version)
+    return SignalsOut(**data.as_dict())
+
+
+@router.get("/backtests", response_model=BacktestPageOut)
+async def backtests(
+    response: Response, settings: SettingsDep, limit: int = Limit, cursor: str | None = Cursor
+) -> BacktestPageOut:
+    """Stored runs, oldest first, with their headline metrics."""
+    data, version = await run_in_threadpool(
+        _cached,
+        settings,
+        ("backtests", limit, cursor),
+        lambda: list_backtests(settings, limit=limit, cursor=cursor),
+    )
+    _no_store(response, version)
+    return BacktestPageOut(**data.as_dict())
+
+
+@router.get("/backtests/{run_id}", response_model=BacktestDetailOut)
+async def backtest(
+    response: Response, settings: SettingsDep, run_id: int = Path(ge=1)
+) -> BacktestDetailOut:
+    """One run: equity curve with benchmarks and running drawdown, results per segment
+    and series, turnover and costs per rebalance."""
+    data, version = await run_in_threadpool(
+        _cached, settings, ("backtest", run_id), lambda: backtest_detail(settings, run_id)
+    )
+    if data is None:
+        raise ResourceNotFoundError(f"Backtest run {run_id} is not in the analytics store.")
+    _no_store(response, version)
+    return BacktestDetailOut(**data.as_dict())
 
 
 def _tickers(settings: Settings) -> set[str]:

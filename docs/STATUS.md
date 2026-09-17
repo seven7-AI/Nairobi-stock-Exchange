@@ -1386,3 +1386,70 @@ FY2023 131,458 m / 36,176 m / 11.26 (the scraper's hand-checked figures).
 `/stocks/KCB/prices?range=max` → 4,521 points 2007-01-02 → 2026-09-16, one gap
 2024-12-31 → 2026-07-26 (572 d), `partial`; `range=5y&interval=weekly` → 182 points
 from 852 observations. Geographic block: `unavailable` with the scraper reason.
+
+## #50 Dashboard API: analytics, forecasts, signals, backtests  ✅ 2026-09-17
+
+- **`analytics.py`** — `build_analytics_table(as_of, sector)`: every ranked instrument
+  on a date (rank order, unranked last) with its composite score as a measure,
+  classification, confidence, market / sector / industry ranks, value-trap risk,
+  compounder score, the explanation's positive and negative factors, every factor's
+  score with coverage and three percentiles, and the eight `relative_*_vs_market|sector`
+  return metrics; per-factor status coverage; the list of stored ranking dates for an
+  as-of selector; `latest_known_as_of`.
+- **`forecasts.py`** — `build_forecasts(as_of, ticker, model, horizon)`: model × horizon
+  cells (expected return as a measure, q05–q95, p_positive, p_outperform, expected vol,
+  p_drawdown, benchmark) — ranges and probabilities, never a target price; when one
+  ticker is asked for, its scenario rows (base / bear / bull with assumptions and implied
+  prices), its Monte Carlo paths and the close the quantiles apply to; the latest
+  regime; each forecast model's walk-forward accuracy from the registry (n, MAE, RMSE,
+  directional accuracy, benchmark hit rate, interval coverage per horizon);
+  `availability` that says plainly when a date is all `unavailable` and names
+  `latest_known_as_of`; the disclaimer.
+- **`signals.py`** — `derive_signals` (pure, unit-tested on plain objects) regroups
+  stored rows: Buy Candidate / Watch / Neutral / Weak / Avoid buckets in rank order,
+  unscored counts by reason, value traps (risk ≥ 1 with label and the ranking's own
+  signals), compounders (score ≥ threshold with criteria met), valuation upside and
+  downside from known blended valuations (price, intrinsic, range, margin of safety,
+  uncertainty, actionable, methods used), risk flags from open error / warning findings
+  (paths blanked) plus factors the ranking could not score, and positive / negative
+  factor combinations. Every item carries its numbers and `link: /stocks/{ticker}`.
+- **`backtests.py`** — `list_backtests` (the research router now calls it; its page
+  shape is unchanged) and `backtest_detail`: weights, costs, results per segment and
+  series, the equity curve with benchmarks and a running drawdown, max drawdown,
+  turnover and costs per rebalance, the disclaimer.
+- Endpoints: `GET /analytics?as_of=&sector=`, `/forecasts?as_of=&ticker=&model=&horizon=`,
+  `/signals?as_of=&compounder_threshold=`, `/backtests`, `/backtests/{run_id}`.
+
+Tests: `derive_signals` on synthetic rows (buckets, unscored reasons, trap labels and
+signals, compounder criteria and threshold edge, valuation split and sort, error-first
+flags with paths blanked, unavailable-factor flags, factor combinations ignoring
+"not scored"); on the fixture store the analytics table lists the ranked universe in
+order with reasons on unscored rows, a sector filter, 404 for a date without
+rankings; forecasts 404 when the weekly pipeline never ran; every signal item's score
+and classification equal its analytics row, traps have risk ≥ 1, compounders meet the
+threshold, upside rows are positive and known; backtests empty but well shaped;
+`realdata` checks on the live store (KCB forecasts known on 2024-12-31 with ordered
+quantiles, accuracy rows, four runs, a 2,980-day equity curve).
+
+Live (2026-09-17, real store in-process): `/analytics` → 89 rows as of 2026-09-16,
+`factor-model v1`, EQTY 1 (76.0, Buy Candidate), PORT 2 (69.7), CARB 3 (66.0), BRIT 4
+(62.7, Watch), NSE 5 (58.7); momentum coverage `unavailable` 89 of 89; available dates
+back to 2024-12-31. `/forecasts?ticker=KCB` → 2026-09-16 `unavailable` ("forecast: 2
+contiguous monthly returns, minimum 36"), `latest_known_as_of 2024-12-31`, price 90.00,
+models ar1 / ewma / mean / naive, scenarios base +6.5 %, regime `unavailable` (^NASI
+624 days stale); accuracy ar1: 1 m n 595 MAE 0.061 directional 0.509 coverage 0.901 …
+12 m n 540 MAE 0.243 directional 0.539 coverage 0.861. `?as_of=2024-12-31` → KCB price
+41.60, ar1 12 m expected +3.8 %, q05 −47.5 % / q50 −3.2 % / q95 +78.5 %, p_positive
+0.465, p_drawdown 0.577; regime Bull / Normal / Risk-on. `/signals` → 89 in universe, 19
+scored, 70 unscored (69 with 0 % of factor weight, 1 with 40 %); Buy Candidates EQTY,
+PORT, CARB; Watch BRIT, NSE, BAT, JUB, SCOM, KEGN, CGEN, DTK, SBIC, KCB, CRWN; Neutral
+TOTL, KNRE; Weak KUKZ, HFCK, CTUM; value traps BAT **high** (dividend yield 12.5 %,
+revenue fell, ROE and margins deteriorating, leverage rising), JUB medium, KEGN medium;
+11 compounders (EQTY 100, CARB 100, BRIT 100, SCOM 100 …); valuation upside KQ +249 %,
+PORT +147 %, KEGN +87 %, KCB +10.6 %; downside HFCK −78 %, NSE −75 %, KNRE −64 %; 219
+risk flags led by the `universe_gap` error ("57 instruments share a data gap from
+2024-12-31 to 2026-07-26"); positive factor combinations EQTY, CARB, BRIT.
+`/backtests` → runs 1–4 (factor-model-v1 −18.2 %, its equal-weight companion +4.3 %,
+market-only −56.6 %); `/backtests/1` (434 kB) → 2,980 equity days to 2024-12-31, final
+equity KES 8.18 m vs ^NASI 12.92 m / ^N20I 4.86 m rebased, max drawdown −28.9 %, 34
+rebalance rows, segment-1 total return −18.2 % vs ^NASI +74.2 %.
