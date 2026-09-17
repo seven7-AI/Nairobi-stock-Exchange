@@ -224,3 +224,30 @@ async def token_for_role(client, org_admin: dict):
         }
 
     return _make
+
+
+@pytest.fixture(scope="session")
+def dashboard_store(fixture_db_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """An analytics store built once from the fixture prices as of 2024-12-31 - the last
+    day with a full set of known market metrics - with the daily and fundamentals
+    pipelines run. Shared by the public-dashboard tests."""
+    from datetime import date
+
+    from app.web.config import Settings
+    from app.web.services.analytics.classification.service import classify_instruments
+    from app.web.services.analytics.store import upgrade_analytics_db
+    from app.web.services.jobs import run_pipeline
+    from app.web.services.market_data.sources import NseScraperSource
+
+    root = tmp_path_factory.mktemp("dashboard")
+    settings = Settings(
+        NSE_SCRAPER_DB_PATH=str(fixture_db_path),
+        NSE_SCRAPER_PATH=str(root / "scraper"),
+        ANALYTICS_DB_PATH=str(root / "analytics.sqlite3"),
+    )
+    upgrade_analytics_db(settings.analytics_db_path)
+    source = NseScraperSource(settings)
+    classify_instruments(settings, source)
+    run_pipeline(settings, source, "daily", as_of=date(2024, 12, 31))
+    run_pipeline(settings, source, "fundamentals", as_of=date(2024, 12, 31))
+    return settings.analytics_db_path

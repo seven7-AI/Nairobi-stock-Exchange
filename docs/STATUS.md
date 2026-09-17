@@ -1453,3 +1453,38 @@ risk flags led by the `universe_gap` error ("57 instruments share a data gap fro
 market-only −56.6 %); `/backtests/1` (434 kB) → 2,980 equity days to 2024-12-31, final
 equity KES 8.18 m vs ^NASI 12.92 m / ^N20I 4.86 m rebased, max drawdown −28.9 %, 34
 rebalance rows, segment-1 total return −18.2 % vs ^NASI +74.2 %.
+
+## #51 Dashboard SPA serving, standalone mode and settings  ✅ 2026-09-17
+
+`app/web/api/spa.py` — `SpaStaticFiles` (Starlette `StaticFiles` with the fallback a
+browser router needs: an unknown extension-less GET serves `index.html`; a missing
+real file stays a 404; anything under the API prefix is a JSON 404 whatever the
+method; `index.html` is `no-cache` with a `default-src 'self'` CSP, `/assets/*` is
+immutable for a year; `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options:
+DENY`) and `mount_spa`, mounted **last** in `create_app` and only when
+`dashboard/dist/index.html` exists — so tests and hosts without a build are untouched.
+
+**Standalone mode** (`DASHBOARD_STANDALONE=true`, for the public port): `create_app`
+includes only the dashboard router, the ops router and the SPA — no auth, users,
+organisations, research or connectors — drops the CORS middleware for a same-origin,
+credential-less page and adds the security headers to every response instead;
+`/health/ready` reports the analytics store (migrated to head) and the scraper source
+only, never Postgres or Redis (another project's Postgres squats 127.0.0.1:5432 on
+this host); `/docs` stays, documenting only the public routes. Settings:
+`DASHBOARD_STANDALONE` (default false), `DASHBOARD_DIST_DIR` (default
+`dashboard/dist`).
+
+Tests (`app/tests/integration/test_dashboard_spa.py`, on a temporary `dist/`): `/` and
+`/stocks/KCB` serve the page with the cache and security headers, hashed assets are
+immutable, a missing asset is 404, the API and `/health` win over the mount, an
+unknown `/api/v1/dashboard/...` stays a JSON 404, `POST /api/v1/auth/login` and the
+platform routers are 404 in standalone mode and absent from the OpenAPI document,
+readiness never names a location, and without a build the root is 404 while platform
+mode still mounts everything. The shared `dashboard_store` fixture moved to
+`conftest.py`.
+
+Live (2026-09-17): the built SPA from #53 served through `uvicorn` in standalone mode
+on a local port — `/` and `/stocks/KCB` 200 `text/html` with `cache-control:
+no-cache`, the CSP and `nosniff`; `/assets/index-*.js` 200; `/api/v1/dashboard/nope`
+404 JSON; `POST /api/v1/auth/login` 404; `/health/ready` → `status ok`,
+`analytics_store.revision 20260915_0014`, scraper `ok` 1.55 h old, `dashboard: true`.

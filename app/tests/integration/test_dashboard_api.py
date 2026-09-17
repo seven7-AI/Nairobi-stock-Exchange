@@ -16,33 +16,14 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.web.config import Settings
-from app.web.services.analytics.classification.service import classify_instruments
 from app.web.services.analytics.store import upgrade_analytics_db
 from app.web.services.dashboard import reset_dashboard_cache
-from app.web.services.jobs import run_pipeline
 from app.web.services.market_data.sources.nse_scraper import NseScraperSource
 
 pytestmark = [pytest.mark.integration]
 
 BASE = "/api/v1/dashboard"
 AS_OF = date(2024, 12, 31)  # the last day with a full set of known market metrics
-
-
-@pytest.fixture(scope="module")
-def dashboard_store(fixture_db_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    root = tmp_path_factory.mktemp("dashboard")
-    settings = Settings(
-        NSE_SCRAPER_DB_PATH=str(fixture_db_path),
-        NSE_SCRAPER_PATH=str(root / "scraper"),
-        ANALYTICS_DB_PATH=str(root / "analytics.sqlite3"),
-    )
-    upgrade_analytics_db(settings.analytics_db_path)
-    source = NseScraperSource(settings)
-    classify_instruments(settings, source)
-    run_pipeline(settings, source, "daily", as_of=AS_OF)
-    run_pipeline(settings, source, "fundamentals", as_of=AS_OF)
-    return settings.analytics_db_path
 
 
 @pytest.fixture
