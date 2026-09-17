@@ -1,0 +1,86 @@
+{
+  "version.json": {
+    "path": "/status/version",
+    "captured_at": "2026-09-17T08:27:37.822642+00:00",
+    "bytes": 267,
+    "store_version": "18d60daf91ccaa67-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "status.json": {
+    "path": "/status",
+    "captured_at": "2026-09-17T08:27:45.639661+00:00",
+    "bytes": 23584,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "overview.json": {
+    "path": "/overview",
+    "captured_at": "2026-09-17T08:27:54.147443+00:00",
+    "bytes": 10153,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "market.json": {
+    "path": "/market",
+    "captured_at": "2026-09-17T08:27:54.649756+00:00",
+    "bytes": 93679,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "stocks.json": {
+    "path": "/stocks?limit=200",
+    "captured_at": "2026-09-17T08:27:55.048355+00:00",
+    "bytes": 106595,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "stock-KCB.json": {
+    "path": "/stocks/KCB",
+    "captured_at": "2026-09-17T08:27:57.068795+00:00",
+    "bytes": 38195,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "prices-KCB-max.json": {
+    "path": "/stocks/KCB/prices?range=max&interval=weekly",
+    "captured_at": "2026-09-17T08:27:58.460199+00:00",
+    "bytes": 110306,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "analytics.json": {
+    "path": "/analytics",
+    "captured_at": "2026-09-17T08:28:00.793338+00:00",
+    "bytes": 317076,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "forecasts-KCB.json": {
+    "path": "/forecasts?ticker=KCB",
+    "captured_at": "2026-09-17T08:28:01.066280+00:00",
+    "bytes": 15578,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "signals.json": {
+    "path": "/signals",
+    "captured_at": "2026-09-17T08:28:01.536133+00:00",
+    "bytes": 101552,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "backtests.json": {
+    "path": "/backtests",
+    "captured_at": "2026-09-17T08:28:01.665637+00:00",
+    "bytes": 3513,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  },
+  "backtest-1.json": {
+    "path": "/backtests/1",
+    "captured_at": "2026-09-17T08:28:03.746383+00:00",
+    "bytes": 433804,
+    "store_version": "18d60e5464b257e4-18d60aae0a66e143",
+    "captured_via": "in-process ASGI against the live store"
+  }
+}
