@@ -1330,3 +1330,59 @@ TCL −6.67 %; KCB price 90.00, change −2.44 %, volume 375,298, 52-week 52.50�
 market cap KES 289.2 bn, industry Commercial Banks, founded 1896, 11,253 employees;
 29 classified equities have no stockanalysis row (ACCS, ARM, BAUM, …) and appear with
 `unavailable` reasons. No string leaving the API contains a filesystem path.
+
+## #49 Dashboard API: stocks list and stock detail  ✅ 2026-09-17
+
+`app/web/services/dashboard/stocks.py`. **List** — `stock_universe_snapshot` (cached per
+store version): every classified equity with its quote, the latest ranking (score,
+classification, market rank, confidence, value-trap risk, compounder score), the seven
+factors' market percentiles and the P/E, P/B and dividend yield stored on the latest
+fundamentals date; `list_stocks` filters (`q` on ticker / company / sector, `sector`),
+sorts (`ticker | price | change | volume | market_cap | score | pe | pb |
+dividend_yield`; non-known values always last, whichever direction) and pages with an
+opaque cursor that refuses to serve a different query. **Detail** —
+`build_stock_detail`: the research profile (`build_profile`, unchanged) plus the latest
+quote, a year of prices, the stock beside its sector's medians (`sector_comparison`:
+five market and six fundamental metrics, peer count, known peers, the stock's
+percentile among them), fiscal-year statement rows (`statement_summary` over
+`load_statement_rows` + `concept_series`, point-in-time, currency carried), company
+facts (industry, founded, employees, revenue, listed since, classification source),
+`forecast_availability` with `latest_known_as_of`, and a **geographic block that is
+`unavailable`** with the reason — the scraper captures nothing geographic (issue
+nse-stock-scraper#5 will add the company page). **Prices** — `price_history(range=
+1m..max, interval=daily|weekly|monthly)`: closes with every break longer than the
+engine's 14-day threshold listed as `gaps`, `availability` known / partial /
+unavailable, and `missing_start` when the requested window begins inside a hole (a
+1-year window today starts inside the 2025 gap); indices are served too.
+Endpoints: `GET /stocks`, `/stocks/{ticker}`, `/stocks/{ticker}/prices`,
+`/stocks/{ticker}/statements` (404 "not an instrument" otherwise).
+
+Tests (fixture store as of 2024-12-31): search narrows to KCB / the banks; score sort
+puts known scores first and unscored last with reasons; three pages of four walk the
+ten equities without duplicates; a cursor from another sort → 422; KCB detail carries
+Banking, Commercial Banks, founded 1896, listed since 2007-01-02, `interest_coverage`
+`not_applicable`, the geographic block unavailable, forecasts absent with
+`latest_known_as_of` None, a 1-year window that starts 2026-07-26 with
+`missing_start` 2025-09-12 → 2026-07-26 (317 d) and status `partial`; KCB FY2021 net
+income KES 34,092 m in KES (the scraper's hand-checked figure); KENO has no statements
+and says so; ABSA `max` prices run 2007-01-02 → 2026-09-13 across the 572-day gap with
+`source_tickers` BBK + ABSA; weekly thinning; `^NASI` ends 2024-12-31 with no gap;
+unknown ticker and bad range → 404 / 422.
+
+Live (2026-09-17, real store + scraper DB in-process): `/stocks?sort=score&order=desc`
+→ 92 rows, EQTY 75.98 Buy Candidate (P/E 5.34, quality P80), PORT 69.73, CARB 66.00,
+BRIT 62.72 Watch, NSE 58.73 Watch; unscored rows last with their reason. `/stocks/KCB`
+(40 kB, 2.3 s cold / 0.01 s cached) → KCB Group PLC, Banking / Commercial Banks, founded
+1896, 11,253 employees, listed since 2007-01-02; forecast `unavailable` ("2 contiguous
+monthly returns, minimum 36") with `latest_known_as_of 2024-12-31`; the 1-year price
+window starts 2026-07-26 with `missing_start` 2025-09-15 → 2026-07-26 (314 d) and
+status `partial`; sector comparison: 1-month return +3.15 % vs Banking median −2.69 %
+(11 peers, P73), market cap KES 289.2 bn vs 126.4 bn (P91), P/E 4.33 vs 6.89 (4 peers
+with statements, P0), P/B 0.87 vs 1.29, ROE 22.0 % vs 14.0 % (P75), net margin 38.5 %
+vs 31.4 % (P100), revenue growth 5.6 % vs 15.3 %; 12-month return, volatility and
+average volume `unavailable` for every peer. `/stocks/KCB/statements` → FY2025 revenue
+KES 173,395 m, net income 66,819 m, EPS 20.80; FY2024 164,148 m / 60,090 m / 18.70;
+FY2023 131,458 m / 36,176 m / 11.26 (the scraper's hand-checked figures).
+`/stocks/KCB/prices?range=max` → 4,521 points 2007-01-02 → 2026-09-16, one gap
+2024-12-31 → 2026-07-26 (572 d), `partial`; `range=5y&interval=weekly` → 182 points
+from 852 observations. Geographic block: `unavailable` with the scraper reason.
