@@ -313,6 +313,27 @@ class NseScraperSource:
             for row in rows
         }
 
+    def latest_trade_date(self) -> date | None:
+        """The newest ``trade_date`` in the canonical timeline, or None without one."""
+        with self._connect() as connection:
+            if not self._table_exists(connection, OBSERVATIONS_TABLE):
+                return None
+            row = connection.execute(f"SELECT MAX(trade_date) FROM {OBSERVATIONS_TABLE}").fetchone()
+        return date.fromisoformat(row[0]) if row and row[0] else None
+
+    def latest_trade_date_coverage(self) -> tuple[date | None, int]:
+        """The newest trade date and how many instruments have an observation on it."""
+        with self._connect() as connection:
+            if not self._table_exists(connection, OBSERVATIONS_TABLE):
+                return None, 0
+            row = connection.execute(
+                f"SELECT trade_date, COUNT(DISTINCT ticker_symbol) FROM {OBSERVATIONS_TABLE} "
+                f"WHERE trade_date = (SELECT MAX(trade_date) FROM {OBSERVATIONS_TABLE})"
+            ).fetchone()
+        if not row or not row[0]:
+            return None, 0
+        return date.fromisoformat(row[0]), int(row[1] or 0)
+
     def input_watermarks(self) -> dict[str, str]:
         """A cheap fingerprint per input table - ``max key:row count`` - so a job can
         tell whether anything it reads has changed since it last ran."""
