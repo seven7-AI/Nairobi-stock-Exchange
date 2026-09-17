@@ -182,6 +182,13 @@ class Settings(BaseSettings):
     #: Mount ``/api/v1/dashboard`` - derived analytics and prices from the two
     #: SQLite files only. The single documented exception to the RBAC rule.
     dashboard_public: bool = Field(default=True, alias="DASHBOARD_PUBLIC")
+    #: Serve only the dashboard router, the ops router and the SPA - for the public
+    #: port, where no Postgres or Redis exists and the platform routers must not.
+    dashboard_standalone: bool = Field(default=False, alias="DASHBOARD_STANDALONE")
+    #: The built SPA (``npm run build`` output); mounted at ``/`` when it exists.
+    dashboard_dist_dir: Path = Field(
+        default=ROOT_DIR / "dashboard" / "dist", alias="DASHBOARD_DIST_DIR"
+    )
     #: Cached dashboard payloads are recomputed when either SQLite file changes or
     #: after this many seconds, whichever comes first.
     dashboard_cache_max_age_seconds: float = Field(

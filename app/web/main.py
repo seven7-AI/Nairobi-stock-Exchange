@@ -14,9 +14,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.concurrency import run_in_threadpool
 
 from app.web.api.error_handlers import register_exception_handlers
 from app.web.api.middleware import RequestContextMiddleware
@@ -32,6 +33,7 @@ from app.web.api.routers.organizations.views import router as organizations_rout
 from app.web.api.routers.reports.views import router as reports_router
 from app.web.api.routers.research.views import router as research_router
 from app.web.api.routers.users.views import router as users_router
+from app.web.api.spa import SECURITY_HEADERS, mount_spa
 from app.web.config import Settings, get_settings
 from app.web.core.dependencies import build_app_state, set_app_state, shutdown_app_state
 from app.web.utils.logger import configure_logging, get_logger
@@ -63,6 +65,16 @@ admits; see the `role` claim on your token.
 """
 
 
+STANDALONE_DESCRIPTION = """
+The **public dashboard** of the NSE Analytics Backend: read-only, no login.
+
+Every endpoint under `/api/v1/dashboard` serves derived analytics and market prices
+from the engine's SQLite store and the scraper's database; every number carries a
+`status` and a `reason`, so missing is never shown as zero. Model outputs, not
+investment advice.
+"""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build application state on startup, release it on shutdown."""
@@ -90,8 +102,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
 
     app = FastAPI(
-        title="NSE Analytics Backend",
-        description=DESCRIPTION,
+        title="NSE Analytics Backend"
+        + (" - public dashboard" if resolved.dashboard_standalone else ""),
+        description=STANDALONE_DESCRIPTION if resolved.dashboard_standalone else DESCRIPTION,
         version="0.2.0",
         lifespan=lifespan,
         docs_url="/docs",
@@ -100,26 +113,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.add_middleware(RequestContextMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=resolved.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if resolved.dashboard_standalone:
+        # Same-origin SPA, no credentials: no CORS; plain security headers instead.
+        @app.middleware("http")
+        async def _security_headers(request: Request, call_next: Any) -> Any:
+            response = await call_next(request)
+            for name, value in SECURITY_HEADERS.items():
+                response.headers.setdefault(name, value)
+            return response
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=resolved.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     register_exception_handlers(app)
 
     api = APIRouter(prefix=resolved.api_v1_prefix)
-    for router in DOMAIN_ROUTERS:
-        api.include_router(router)
-    if resolved.dashboard_public:
+    if not resolved.dashboard_standalone:
+        for router in DOMAIN_ROUTERS:
+            api.include_router(router)
+    if resolved.dashboard_public or resolved.dashboard_standalone:
         # Unauthenticated, read-only, SQLite-only - see routers/dashboard/views.py.
         api.include_router(dashboard_router)
     app.include_router(api)
     app.include_router(_ops_router(resolved))
 
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    # Last, so every route above wins; a no-op without a built dashboard.
+    mount_spa(app, resolved)
     return app
 
 
@@ -147,6 +172,8 @@ def _ops_router(settings: Settings) -> APIRouter:
         from app.web.core.dependencies import get_app_state
 
         state = get_app_state()
+        if settings.dashboard_standalone:
+            return await _standalone_readiness(settings, state)
         redis_ok = await state.redis.ping()
         database_ok = True
         try:
@@ -176,6 +203,34 @@ def _ops_router(settings: Settings) -> APIRouter:
         }
 
     return router
+
+
+async def _standalone_readiness(settings: Settings, state: Any) -> dict[str, Any]:
+    """The public port has no Postgres and no Redis: report the two SQLite files."""
+    from app.web.services.analytics.store import analytics_db_status
+
+    store_ok = False
+    revision: str | None = None
+    try:
+        status = await run_in_threadpool(analytics_db_status, settings.analytics_db_path)
+        store_ok = status.exists and status.current_revision == status.head_revision
+        revision = status.current_revision
+    except Exception:
+        logger.warning("readiness_analytics_store_unreachable")
+    try:
+        source_health = await run_in_threadpool(state.market_data_source.health_check)
+        source = source_health.to_dict()
+        source.pop("location", None)
+    except Exception:
+        logger.warning("readiness_market_data_source_unreachable")
+        source = {"name": state.market_data_source.name, "status": "unreachable"}
+    source_ok = source.get("status") == "ok"
+    return {
+        "status": "ok" if (store_ok and source_ok) else "degraded",
+        "analytics_store": {"ok": store_ok, "revision": revision},
+        "market_data_source": source,
+        "dashboard": (settings.dashboard_dist_dir / "index.html").is_file(),
+    }
 
 
 app = create_app()
