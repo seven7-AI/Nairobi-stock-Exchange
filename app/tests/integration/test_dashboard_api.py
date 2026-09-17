@@ -278,3 +278,155 @@ async def test_live_store_overview(live_source: NseScraperSource) -> None:
                 os.environ[key] = value
         get_settings.cache_clear()
         reset_dashboard_cache()
+
+
+# --- #49: stocks list and stock detail ---------------------------------------------------
+
+
+async def test_stocks_list_searches_sorts_and_pages(dashboard_client: AsyncClient) -> None:
+    body = (await dashboard_client.get(f"{BASE}/stocks")).json()
+    assert body["total"] == 10 and body["as_of"] == AS_OF.isoformat()
+    assert [r["ticker_symbol"] for r in body["items"]][:3] == ["ABSA", "ACCS", "EQTY"]
+    kcb = next(r for r in body["items"] if r["ticker_symbol"] == "KCB")
+    assert kcb["price"]["value"] == 94.0 and kcb["classification"] is not None
+    assert set(kcb["factor_percentiles"]) == {
+        "value",
+        "quality",
+        "growth",
+        "momentum",
+        "dividend",
+        "risk",
+        "liquidity",
+    }
+    assert kcb["pe"]["status"] in ("known", "not_meaningful", "unavailable")
+    # search narrows on ticker, company or sector
+    only = (await dashboard_client.get(f"{BASE}/stocks", params={"q": "kc"})).json()
+    assert [r["ticker_symbol"] for r in only["items"]] == ["KCB"]
+    banks = (await dashboard_client.get(f"{BASE}/stocks", params={"q": "bank"})).json()
+    assert {"KCB", "EQTY", "ABSA", "NCBA"} <= {r["ticker_symbol"] for r in banks["items"]}
+    # sort by score: known scores first (desc), unscored last with their reason
+    scored = (
+        await dashboard_client.get(f"{BASE}/stocks", params={"sort": "score", "order": "desc"})
+    ).json()
+    values = [r["overall_score"]["value"] for r in scored["items"]]
+    known = [v for v in values if v is not None]
+    assert known == sorted(known, reverse=True) and values[: len(known)] == known
+    assert all(
+        r["overall_score"]["reason"] for r in scored["items"] if r["overall_score"]["value"] is None
+    )
+    # pages walk without duplicates and a foreign cursor is rejected
+    first = (await dashboard_client.get(f"{BASE}/stocks", params={"limit": 4})).json()
+    second = (
+        await dashboard_client.get(
+            f"{BASE}/stocks", params={"limit": 4, "cursor": first["next_cursor"]}
+        )
+    ).json()
+    third = (
+        await dashboard_client.get(
+            f"{BASE}/stocks", params={"limit": 4, "cursor": second["next_cursor"]}
+        )
+    ).json()
+    seen = [r["ticker_symbol"] for page in (first, second, third) for r in page["items"]]
+    assert len(seen) == 10 == len(set(seen)) and third["next_cursor"] is None
+    foreign = await dashboard_client.get(
+        f"{BASE}/stocks", params={"limit": 4, "sort": "price", "cursor": first["next_cursor"]}
+    )
+    assert foreign.status_code == 422
+    assert (
+        await dashboard_client.get(f"{BASE}/stocks", params={"sort": "nope"})
+    ).status_code == 422
+
+
+async def test_stock_detail_carries_everything_with_reasons(dashboard_client: AsyncClient) -> None:
+    body = (await dashboard_client.get(f"{BASE}/stocks/kcb")).json()
+    assert body["ticker_symbol"] == "KCB"
+    assert body["quote"]["price"]["value"] == 94.0
+    profile = body["profile"]
+    assert profile["identity"]["sector"] == "Banking"
+    assert profile["metrics"]["quality"]["roe"]["status"] in ("known", "unavailable", "missing")
+    assert profile["metrics"]["quality"]["interest_coverage"]["status"] == "not_applicable"
+    assert body["facts"]["industry"] == "Commercial Banks" and body["facts"]["founded"] == 1896
+    assert body["facts"]["listed_since"] == "2007-01-02"
+    assert (
+        body["geographic"]["status"] == "unavailable" and "scraper" in body["geographic"]["reason"]
+    )
+    assert body["geographic"]["segments"] == []
+    # the weekly pipeline never ran on this store: forecasts absent, and it says so
+    fa = body["forecast_availability"]
+    assert fa["status"] == "unavailable" and fa["latest_known_as_of"] is None and fa["reason"]
+    # a year of prices ending on the newest scrape day, crossing the 572-day gap
+    prices = body["prices"]
+    assert prices["range"] == "1y" and prices["end"] == "2026-09-13"
+    # the year starts inside the 572-day gap: no break between the points, but a
+    # hole at the start of the window, and the payload says so
+    assert prices["start"] == "2026-07-26" and prices["gaps"] == []
+    assert prices["availability"]["status"] == "partial"
+    assert prices["missing_start"] == {"from": "2025-09-12", "to": "2026-07-26", "days": 317}
+    # sector comparison rows carry the stock and the peers' median, or the reason
+    rows = {r["metric"]: r for r in body["sector_comparison"]}
+    assert set(rows) >= {"return_1m", "pe", "roe", "market_cap"}
+    assert rows["return_1m"]["sector_members"] >= 3
+    assert rows["return_1m"]["sector_median"]["status"] in ("known", "unavailable")
+    assert body["links"]["prices"].endswith("/stocks/KCB/prices")
+
+
+async def test_stock_statements_are_fiscal_years_with_hand_checked_values(
+    dashboard_client: AsyncClient,
+) -> None:
+    body = (await dashboard_client.get(f"{BASE}/stocks/KCB/statements")).json()
+    assert body["period_type"] == "annual" and body["availability"]["status"] == "known"
+    years = {y["period_end"]: y for y in body["years"]}
+    # KCB FY2024 as captured from stockanalysis (hand-checked in the scraper's tests):
+    # revenue 173,395 m KES is FY2025; FY2021 net income 34,092 m
+    fy2021 = years["2021-12-31"]
+    assert fy2021["currency"] == "KES"
+    assert round(fy2021["values"]["net_income"]["value"] / 1e6) == 34092
+    assert fy2021["values"]["revenue"]["status"] == "known"
+    assert body["concepts"] == [
+        "revenue",
+        "net_income",
+        "eps",
+        "dps",
+        "equity",
+        "total_assets",
+        "ocf",
+        "fcf",
+    ]
+    # a stock without statements is honest about it
+    none = (await dashboard_client.get(f"{BASE}/stocks/KENO/statements")).json()
+    assert none["years"] == [] and none["availability"]["status"] == "unavailable"
+    assert (await dashboard_client.get(f"{BASE}/stocks/NOPE/statements")).status_code == 404
+
+
+async def test_price_history_lists_gaps_and_sources(dashboard_client: AsyncClient) -> None:
+    body = (
+        await dashboard_client.get(f"{BASE}/stocks/ABSA/prices", params={"range": "max"})
+    ).json()
+    assert body["start"] == "2007-01-02" and body["end"] == "2026-09-13"
+    assert body["n_observations"] == len(body["points"]) > 4000
+    assert "BBK" in body["source_tickers"] and "ABSA" in body["source_tickers"]
+    days = [g["days"] for g in body["gaps"]]
+    assert 572 in days and body["gap_threshold_days"] == 14
+    assert body["availability"]["status"] == "partial"
+    weekly = (
+        await dashboard_client.get(
+            f"{BASE}/stocks/ABSA/prices", params={"range": "5y", "interval": "weekly"}
+        )
+    ).json()
+    assert 0 < len(weekly["points"]) < len(body["points"]) and weekly["n_observations"] > len(
+        weekly["points"]
+    )
+    index = (
+        await dashboard_client.get(f"{BASE}/stocks/^NASI/prices", params={"range": "1y"})
+    ).json()
+    assert (
+        index["end"] == "2024-12-31"
+        and index["gaps"] == []
+        and index["availability"]["status"] == "known"
+    )
+    assert (await dashboard_client.get(f"{BASE}/stocks/NOPE/prices")).status_code == 404
+    assert (
+        await dashboard_client.get(f"{BASE}/stocks/ABSA/prices", params={"range": "2y"})
+    ).status_code == 422
+    response = await dashboard_client.get(f"{BASE}/stocks/NOPE")
+    assert response.status_code == 404 and "not an instrument" in response.json()["message"]

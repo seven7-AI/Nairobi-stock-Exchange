@@ -100,6 +100,10 @@ scraper's database only, and every number it serves is `{value, status, reason}`
 | `GET /status` | store revision and tables, each pipeline's last run and last success with its steps, the scraper's health, watermarks, the cron chain, the model registry |
 | `GET /overview` | tracked / scraped / classified counts, the latest market date and how many instruments have it, per-table status counts on the latest date with `latest_known_as_of`, open findings by severity |
 | `GET /market?as_of=` | a quote per classified equity (scraped price, change, volume, 52-week range, market cap, last close), sector medians for 1d/1w/1m, movers, index availability |
+| `GET /stocks?q=&sector=&sort=&order=&limit=&cursor=` | the universe with quotes, multiples, factor percentiles and ranking; non-known values sort last |
+| `GET /stocks/{ticker}` | the research profile + quote, a year of prices with gaps, sector comparison, fiscal-year statements, company facts, the (unavailable) geographic block |
+| `GET /stocks/{ticker}/prices?range=&interval=` | closes with explicit `gaps` and `missing_start`; indices too |
+| `GET /stocks/{ticker}/statements?periods=` | one row per fiscal year, point-in-time, currency carried |
 
 Payloads are cached in-process until either SQLite file changes (`X-Store-Version`
 header) or `DASHBOARD_CACHE_MAX_AGE_SECONDS` elapses.

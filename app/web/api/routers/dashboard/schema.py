@@ -133,17 +133,140 @@ class MarketOut(BaseModel):
     coverage: dict[str, dict[str, int]]
 
 
+class StockRowOut(BaseModel):
+    ticker_symbol: str
+    company_name: str | None
+    sector: str | None
+    industry: str | None
+    price: Measure
+    change_pct: Measure
+    volume: Measure
+    market_cap: Measure
+    pe: Measure
+    pb: Measure
+    dividend_yield: Measure
+    factor_percentiles: dict[str, float | None]
+    overall_score: Measure
+    classification: str | None
+    market_rank: int | None
+    confidence: float | None
+    value_trap_risk: int | None
+    compounder_score: float | None
+    as_of: date_type | None
+
+
+class StockListPage(BaseModel):
+    items: list[StockRowOut]
+    next_cursor: str | None
+    total: int
+    as_of: date_type | None
+    sort: str
+    order: str
+
+
+class PricePointOut(BaseModel):
+    date: date_type
+    close: float
+    volume: float | None
+    change_pct: float | None
+    source: str
+    flagged: bool
+
+
+class GapOut(BaseModel):
+    after: date_type
+    before: date_type
+    days: int
+
+
+class Availability(BaseModel):
+    value: float | None = None
+    status: str
+    reason: str | None = None
+    latest_known_as_of: date_type | None = None
+
+
+class PriceHistoryOut(BaseModel):
+    ticker_symbol: str
+    range: str
+    interval: str
+    start: date_type | None
+    end: date_type | None
+    points: list[PricePointOut]
+    gaps: list[GapOut]
+    gap_threshold_days: int
+    n_observations: int
+    availability: Availability
+    source_tickers: list[str]
+    missing_start: dict[str, Any] | None = None
+
+
+class FiscalYearOut(BaseModel):
+    period_end: date_type
+    label: str
+    currency: str | None
+    values: dict[str, Measure]
+
+
+class StatementsOut(BaseModel):
+    ticker_symbol: str
+    as_of: date_type
+    period_type: str
+    concepts: list[str]
+    years: list[FiscalYearOut]
+    availability: Availability
+
+
+class SectorComparisonRow(BaseModel):
+    metric: str
+    stock: Measure
+    sector_median: Measure
+    sector_members: int
+    known_peers: int
+    percentile_in_sector: float | None
+
+
+class GeographicOut(BaseModel):
+    status: str
+    reason: str
+    segments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class StockDetailOut(BaseModel):
+    ticker_symbol: str
+    quote: QuoteOut
+    profile: dict[str, Any]
+    prices: PriceHistoryOut
+    sector_comparison: list[SectorComparisonRow]
+    statements: StatementsOut
+    facts: dict[str, Any]
+    geographic: GeographicOut
+    forecast_availability: Availability
+    links: dict[str, str]
+
+
 __all__ = [
+    "Availability",
     "CronEntryOut",
+    "FiscalYearOut",
+    "GapOut",
+    "GeographicOut",
     "IndexAvailability",
     "JobRowOut",
     "MarketOut",
     "Measure",
     "OverviewOut",
     "PipelineOut",
+    "PriceHistoryOut",
+    "PricePointOut",
     "QuoteOut",
+    "SectorComparisonRow",
     "SectorPerfOut",
+    "StatementsOut",
     "StatusOut",
+    "StockDetailOut",
+    "StockListPage",
+    "StockRowOut",
     "TableCoverageOut",
     "VersionOut",
 ]
