@@ -7,15 +7,18 @@ import { Placeholder } from "./pages/Placeholder";
 
 const Overview = lazy(() => import("./pages/Overview").then((m) => ({ default: m.Overview })));
 const System = lazy(() => import("./pages/System").then((m) => ({ default: m.System })));
+const Market = lazy(() => import("./pages/Market").then((m) => ({ default: m.Market })));
+const Stocks = lazy(() => import("./pages/Stocks").then((m) => ({ default: m.Stocks })));
+const StockDetail = lazy(() => import("./pages/StockDetail").then((m) => ({ default: m.StockDetail })));
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Suspense fallback={<Loading />}><Overview /></Suspense>} />
-        <Route path="market" element={<Placeholder title="Market" />} />
-        <Route path="stocks" element={<Placeholder title="Stocks" />} />
-        <Route path="stocks/:ticker" element={<Placeholder title="Stock" />} />
+        <Route path="market" element={<Suspense fallback={<Loading />}><Market /></Suspense>} />
+        <Route path="stocks" element={<Suspense fallback={<Loading />}><Stocks /></Suspense>} />
+        <Route path="stocks/:ticker" element={<Suspense fallback={<Loading />}><StockDetail /></Suspense>} />
         <Route path="analytics" element={<Placeholder title="Analytics" />} />
         <Route path="forecasts" element={<Placeholder title="Forecasts" />} />
         <Route path="signals" element={<Placeholder title="Signals" />} />

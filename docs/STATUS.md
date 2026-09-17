@@ -1555,3 +1555,37 @@ changed version refetches mounted views, an unchanged one does not).
 
 Build: 89 kB of gzipped JavaScript for the shell and these two pages (vendor 79 kB);
 Recharts is a separate chunk loaded only by pages that draw a chart.
+
+## #54 Dashboard frontend: Market, Stocks and Stock detail  ✅ 2026-09-17
+
+- **Charts** — `GapAwareLineChart` (Recharts, numeric time axis, one null per gap so the
+  line breaks, a shaded `ReferenceArea` per gap labelled "no data · N d", plus the hole
+  at the start of a window the API reports as `missing_start`), `BarList` (horizontal
+  bars; a non-known item shows its status chip), `RangeBar` (bear · base · bull against
+  the price, pure SVG-less CSS; any missing leg → "range unavailable").
+- **Market** — benchmark indices with their level and staleness reason, sector medians
+  for 1d / 1w / 1m with known / member counts, top and bottom movers, the quote table
+  for every classified equity (source column: scrape / archive / none).
+- **Stocks** — one fetch of the universe, client-side search over ticker / company /
+  sector / industry and sort on every column with unknown values last; four factor
+  percentiles as bars; score, class and rank; rows link to the profile.
+- **Stock detail** (`/stocks/:ticker`, keyed by ticker) — header with price, change,
+  class; tiles for score (or its reason), ranks, value-trap risk with its signals,
+  compounder score with its criteria, 52-week range, market cap; the ranking's
+  positive and negative factors; price history with 1y / 3y / 5y / max (weekly thinning
+  on the long ranges) and the gap list under the chart; market metrics and fundamentals
+  tabs of the eight blocks, every metric with its reason inline; factor scores with
+  three percentiles; valuation range bar and per-method rows; forecast card (per model,
+  quantiles and probabilities or the reason, price band when known, disclaimer);
+  scenarios; regime; versus-the-sector table; company facts with the geographic block
+  `unavailable`; fiscal-year statements (currency named when not KES); models, notes,
+  disclaimer.
+
+Tests: series helpers (one null per gap on the captured KCB series, quantiles → price
+band); the KCB page from the captured payloads shows the gap reasons on the 12-month
+return, `n/a` with the reason on interest coverage, the geographic reason, the forecast
+reason, the 572-day gap under the chart, and no non-known chip ever reads "0"; the
+stocks table renders every captured row with links.
+
+Build: Recharts chunk 107 kB gzipped, loaded only by the detail page; the detail page
+itself 6.9 kB.
