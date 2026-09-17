@@ -104,6 +104,10 @@ scraper's database only, and every number it serves is `{value, status, reason}`
 | `GET /stocks/{ticker}` | the research profile + quote, a year of prices with gaps, sector comparison, fiscal-year statements, company facts, the (unavailable) geographic block |
 | `GET /stocks/{ticker}/prices?range=&interval=` | closes with explicit `gaps` and `missing_start`; indices too |
 | `GET /stocks/{ticker}/statements?periods=` | one row per fiscal year, point-in-time, currency carried |
+| `GET /analytics?as_of=&sector=` | the ranked universe on a date: composite score, factor scores and percentiles, relative return metrics, coverage, stored dates |
+| `GET /forecasts?as_of=&ticker=&model=&horizon=` | model × horizon cells (quantiles, probabilities), scenarios and Monte Carlo per ticker, regime, model accuracy; `availability` + `latest_known_as_of` |
+| `GET /signals?as_of=&compounder_threshold=` | classification buckets, value traps, compounders, valuation upside / downside, risk flags, factor combinations |
+| `GET /backtests`, `GET /backtests/{run_id}` | stored runs; one run's equity curve, drawdown, results, turnover, costs |
 
 Payloads are cached in-process until either SQLite file changes (`X-Store-Version`
 header) or `DASHBOARD_CACHE_MAX_AGE_SECONDS` elapses.

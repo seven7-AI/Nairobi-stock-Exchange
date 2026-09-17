@@ -39,12 +39,12 @@ from app.web.core.exceptions import ResourceNotFoundError
 from app.web.core.security import RESEARCH_ROLES, require_roles
 from app.web.db.analytics import analytics_session
 from app.web.db.analytics.models import StockRanking
-from app.web.db.analytics.services.backtests import load_backtest_results, load_backtest_runs
 from app.web.db.analytics.services.classifications import load_classifications
 from app.web.db.analytics.services.stock_rankings import load_rankings
 from app.web.services.analytics.ai import latest_narrative
 from app.web.services.analytics.classification.lookup import ClassificationIndex
 from app.web.services.analytics.research import build_profile
+from app.web.services.dashboard.backtests import list_backtests
 from app.web.services.visualizations.research_charts import load_sector_performance
 
 router = APIRouter(prefix="/research", tags=["research"])
@@ -226,33 +226,25 @@ async def sectors(settings: SettingsDep, as_of: date_type | None = AsOf, metric:
 
 
 def _backtests(settings: Settings, limit: int, cursor: str | None) -> BacktestPage:
-    with analytics_session(settings) as session:
-        runs = load_backtest_runs(session)
-        start = 0
-        if cursor:
-            start = next((i for i, r in enumerate(runs) if str(r.id) == cursor), -1) + 1
-        page = runs[start : start + limit]
-        items = []
-        for run in page:
-            results = {(r.segment, r.series, r.metric): r for r in load_backtest_results(session, run.id)}
-            linked = results.get(("linked", "portfolio", "total_return"))
-            first = {
-                k: {"value": row.value, "status": row.status, "reason": row.reason}
-                for k in ("total_return", "cagr", "volatility", "sharpe", "max_drawdown", "alpha_vs_^NASI", "beta_vs_^NASI")
-                if (row := results.get(("1", "portfolio", k))) is not None
-            }
-            items.append(
-                BacktestRow(
-                    run_id=run.id, name=run.name, purpose=run.purpose,
-                    model=f"{run.model_name} v{run.model_version}", start_date=run.start_date,
-                    end_date=run.end_date, top_n=run.top_n, cost_rate=float(run.costs.get("rate", 0.0)),
-                    segments=run.segments, status=run.status,
-                    linked_total_return=Measure(value=linked.value, status=linked.status, reason=linked.reason) if linked else Measure(status=run.status, reason=run.reason),
-                    first_segment=first,
-                )
-            )
-        next_cursor = str(page[-1].id) if start + limit < len(runs) and page else None
-    return BacktestPage(items=items, next_cursor=next_cursor, total=len(runs))
+    page = list_backtests(settings, limit=limit, cursor=cursor)
+    items = [
+        BacktestRow(
+            run_id=b.run_id,
+            name=b.name,
+            purpose=b.purpose,
+            model=b.model,
+            start_date=b.start_date,
+            end_date=b.end_date,
+            top_n=b.top_n,
+            cost_rate=b.cost_rate,
+            segments=b.segments,
+            status=b.status,
+            linked_total_return=Measure(**b.linked_total_return),
+            first_segment=b.first_segment,
+        )
+        for b in page.items
+    ]
+    return BacktestPage(items=items, next_cursor=page.next_cursor, total=page.total)
 
 
 @router.get("/backtests", response_model=BacktestPage, dependencies=[ResearchUser])

@@ -245,10 +245,171 @@ class StockDetailOut(BaseModel):
     links: dict[str, str]
 
 
+class FactorCellOut(BaseModel):
+    score: Measure
+    coverage: float
+    percentile_market: float | None
+    percentile_sector: float | None
+    percentile_industry: float | None
+
+
+class AnalyticsRowOut(BaseModel):
+    ticker_symbol: str
+    sector: str | None
+    industry: str | None
+    overall: Measure
+    classification: str | None
+    confidence: float
+    market_rank: int | None
+    sector_rank: int | None
+    industry_rank: int | None
+    value_trap_risk: int | None
+    compounder_score: float | None
+    positive_factors: list[str]
+    negative_factors: list[str]
+    factors: dict[str, FactorCellOut]
+    relative: dict[str, Measure]
+
+
+class AnalyticsOut(BaseModel):
+    as_of: date_type
+    model: str
+    available_dates: list[date_type]
+    factor_names: list[str]
+    rows: list[AnalyticsRowOut]
+    coverage: dict[str, dict[str, int]]
+    latest_known_as_of: date_type | None
+
+
+class ForecastCellOut(BaseModel):
+    expected_return: Measure
+    q05: float | None
+    q25: float | None
+    q50: float | None
+    q75: float | None
+    q95: float | None
+    p_positive: float | None
+    p_outperform: float | None
+    expected_vol: float | None
+    p_drawdown: float | None
+    drawdown_threshold: float | None
+    benchmark: str | None
+
+
+class TickerForecastsOut(BaseModel):
+    ticker_symbol: str
+    sector: str | None
+    as_of: date_type
+    price: float | None
+    models: dict[str, dict[str, ForecastCellOut]]
+    scenarios: dict[str, Any] | None
+    simulation: dict[str, Any] | None
+
+
+class ForecastsOut(BaseModel):
+    as_of: date_type
+    availability: Availability
+    latest_known_as_of: date_type | None
+    available_dates: list[date_type]
+    tickers: list[str]
+    items: list[TickerForecastsOut]
+    accuracy: dict[str, dict[str, dict[str, Any]]]
+    regime: dict[str, Any]
+    models: list[dict[str, Any]]
+    disclaimer: str
+
+
+class SignalItemOut(BaseModel):
+    ticker_symbol: str
+    sector: str | None
+    classification: str | None
+    overall_score: Measure
+    confidence: float
+    market_rank: int | None
+    positive_factors: list[str]
+    negative_factors: list[str]
+    link: str
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class RiskFlagOut(BaseModel):
+    kind: str
+    ticker_symbol: str | None
+    severity: str
+    check_name: str | None
+    detail: str
+    trade_date: date_type | None
+    link: str | None
+
+
+class SignalsOut(BaseModel):
+    as_of: date_type
+    model: str
+    universe: int
+    scored: int
+    unscored: int
+    unscored_reasons: dict[str, int]
+    buy_candidates: list[SignalItemOut]
+    watch: list[SignalItemOut]
+    neutral: list[SignalItemOut]
+    weak: list[SignalItemOut]
+    avoid: list[SignalItemOut]
+    value_traps: list[SignalItemOut]
+    compounders: list[SignalItemOut]
+    compounder_threshold: float
+    valuation_upside: list[dict[str, Any]]
+    valuation_downside: list[dict[str, Any]]
+    risk_flags: list[RiskFlagOut]
+    factor_combinations: dict[str, list[SignalItemOut]]
+    disclaimer: str
+
+
+class BacktestSummaryOut(BaseModel):
+    run_id: int
+    name: str
+    purpose: str
+    model: str
+    start_date: date_type
+    end_date: date_type
+    top_n: int
+    cost_rate: float
+    segments: int
+    status: str
+    reason: str | None
+    linked_total_return: Measure
+    first_segment: dict[str, Measure]
+    benchmarks: list[str]
+
+
+class BacktestPageOut(BaseModel):
+    items: list[BacktestSummaryOut]
+    next_cursor: str | None
+    total: int
+
+
+class BacktestDetailOut(BaseModel):
+    run: BacktestSummaryOut
+    weights: dict[str, float]
+    costs: dict[str, float]
+    results: dict[str, dict[str, dict[str, Measure]]]
+    equity: list[dict[str, Any]]
+    max_drawdown: Measure
+    turnover: list[dict[str, Any]]
+    disclaimer: str
+
+
 __all__ = [
+    "AnalyticsOut",
+    "AnalyticsRowOut",
     "Availability",
+    "BacktestDetailOut",
+    "BacktestPageOut",
+    "BacktestSummaryOut",
     "CronEntryOut",
+    "FactorCellOut",
     "FiscalYearOut",
+    "ForecastCellOut",
+    "ForecastsOut",
     "GapOut",
     "GeographicOut",
     "IndexAvailability",
@@ -260,13 +421,17 @@ __all__ = [
     "PriceHistoryOut",
     "PricePointOut",
     "QuoteOut",
+    "RiskFlagOut",
     "SectorComparisonRow",
     "SectorPerfOut",
+    "SignalItemOut",
+    "SignalsOut",
     "StatementsOut",
     "StatusOut",
     "StockDetailOut",
     "StockListPage",
     "StockRowOut",
     "TableCoverageOut",
+    "TickerForecastsOut",
     "VersionOut",
 ]
