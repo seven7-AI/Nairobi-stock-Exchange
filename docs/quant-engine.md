@@ -112,6 +112,29 @@ scraper's database only, and every number it serves is `{value, status, reason}`
 Payloads are cached in-process until either SQLite file changes (`X-Store-Version`
 header) or `DASHBOARD_CACHE_MAX_AGE_SECONDS` elapses.
 
+### Serving the dashboard on port 4747
+
+The public port runs the same app in **standalone mode** (`DASHBOARD_STANDALONE=true`):
+only the dashboard router, `/health`, `/health/ready` (the two SQLite files, never
+Postgres or Redis), `/docs` and the built SPA (`dashboard/dist`, served at `/` with a
+client-side fallback) are mounted; no CORS, plain security headers. It is a **user
+systemd unit** (`deployment/systemd/nse-dashboard.service`, rendered by the installer;
+this host runs its services that way and lingering is on):
+
+```bash
+scripts/install_dashboard_service.sh --print     # the rendered unit
+scripts/install_dashboard_service.sh             # install + enable --now, wait for /health
+scripts/install_dashboard_service.sh --build     # npm ci && npm run build, then restart
+scripts/install_dashboard_service.sh --verify    # enabled, active, current, healthy
+journalctl --user -u nse-dashboard -f            # logs (also logs/nse_be.log)
+```
+
+The installer refuses to install while anything else listens on the port (`ss -ltnp`),
+and stops when `loginctl show-user $USER -p Linger` is not `yes` (`sudo loginctl
+enable-linger $USER`, once). Optional overrides go in
+`deployment/systemd/nse-dashboard.env` (see the `.example`). The audit copy of the
+installed unit is `deployment/systemd/nse-dashboard.installed`.
+
 ## The AI narrative layer
 
 `app/web/services/analytics/ai/narrative.py` turns the stored profile into a short

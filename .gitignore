@@ -235,3 +235,9 @@ diagrams/momentum/*.png
 diagrams/forecasts/*.png
 # Appended by every cron run (scripts/run_analytics_jobs.sh); job state lives in the analytics store
 reports/analytics-jobs.log
+
+# Dashboard: local overrides for the systemd unit, Node modules, the Vite build
+deployment/systemd/nse-dashboard.env
+dashboard/node_modules/
+dashboard/dist/
+dashboard/coverage/
