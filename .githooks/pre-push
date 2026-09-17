@@ -98,4 +98,31 @@ if [[ -n "${PROBE}" ]]; then
 fi
 ok "analytics migration drift probe"
 
+# --- 6. dashboard ------------------------------------------------------------
+# The React dashboard has its own gate (oxlint, tsc, vitest, vite build). It runs
+# only when dashboard/ changed against the upstream branch, and only when npm is
+# available - nvm is not on PATH in a non-interactive hook, so it is sourced. A
+# machine without Node warns and continues unless DASHBOARD_GATE=strict; set
+# DASHBOARD_GATE=always to run it regardless of what changed.
+[[ -s "${HOME}/.nvm/nvm.sh" ]] && . "${HOME}/.nvm/nvm.sh" >/dev/null 2>&1 || true
+DASHBOARD_UPSTREAM=$(git rev-parse --verify --quiet '@{upstream}' 2>/dev/null || git rev-parse --verify --quiet origin/main 2>/dev/null || echo "")
+if [[ -n "${DASHBOARD_UPSTREAM}" ]]; then
+  DASHBOARD_CHANGED=$(git diff --name-only "${DASHBOARD_UPSTREAM}...HEAD" -- dashboard/ 2>/dev/null | head -1 || true)
+else
+  DASHBOARD_CHANGED="dashboard/"
+fi
+if [[ -z "${DASHBOARD_CHANGED}" && "${DASHBOARD_GATE:-auto}" != "always" ]]; then
+  ok "dashboard (unchanged, skipped)"
+elif ! command -v npm >/dev/null 2>&1; then
+  printf '\033[33m! dashboard changed but npm is not available; not verified (install Node 20 via nvm)\033[0m\n'
+  [[ "${DASHBOARD_GATE:-auto}" == "strict" ]] && fail "dashboard gate requires npm"
+else
+  bold "→ dashboard: npm ci && npm run check && npm run build"
+  ( cd dashboard \
+    && NODE_OPTIONS=--max-old-space-size=1024 nice -n 19 npm ci --no-audit --no-fund --prefer-offline >/dev/null \
+    && NODE_OPTIONS=--max-old-space-size=1024 nice -n 19 npm run check \
+    && NODE_OPTIONS=--max-old-space-size=1024 nice -n 19 npm run build >/dev/null ) || fail "dashboard"
+  ok "dashboard"
+fi
+
 bold "pre-push: all checks passed"

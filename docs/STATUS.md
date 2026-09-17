@@ -1622,3 +1622,21 @@ date; the forecasts page shows the availability reason, the jump button, accurac
 the disclaimer and no "target price"; signal buckets link to the stocks and show the
 value-trap signals; the backtests page shows the stored run, `^NASI`, the `candidate`
 badge and the disclaimer.
+
+## #56 Dashboard frontend: responsive pass, gate integration, docs  ✅ 2026-09-17
+
+- Responsive: the cards grid is `auto-fit, minmax(280px, 1fr)` with two- and
+  three-column spans collapsing under 700 px; every table sits in an `overflow-x:
+  auto` wrapper so the page never scrolls sideways; the nav becomes a horizontal
+  strip and the live indicator drops below it on phones; `color-scheme: light dark`
+  with tokens for both schemes; focus rings, `aria-sort` on sortable headers,
+  `aria-label` / `title` on every status chip, `<title>` per page.
+- Gate: `.githooks/pre-push` step 6 sources nvm and runs `npm ci && npm run check &&
+  npm run build` only when `dashboard/` changed against the upstream branch; a shell
+  without npm warns and continues (`DASHBOARD_GATE=strict` makes it fail,
+  `DASHBOARD_GATE=always` runs it regardless). `Makefile`: `dashboard-install`,
+  `dashboard-dev`, `dashboard-check` (part of `make check`), `dashboard-build` — all
+  skip cleanly without npm. (`make` itself is not installed on this host; the hook is
+  the gate.)
+- Docs: `docs/dashboard.md` (pages, missing ≠ zero, live polling, development, tests,
+  deploying) and a README section.
