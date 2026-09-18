@@ -203,6 +203,13 @@ pytest with `unit`/`integration`/`slow` markers and coverage on `app/`.
 
 `git push --no-verify` bypasses it. Nothing else will catch what you skip.
 
+## Dashboard
+
+A public, read-only React dashboard over the analytics engine is served by this app in
+standalone mode on port 4747 — `http://194.195.87.62:4747`. See `docs/dashboard.md`
+(pages, missing ≠ zero rendering, development, tests) and `docs/quant-engine.md`
+(the `/api/v1/dashboard` endpoints and the systemd service).
+
 ## Deployment
 
 ```bash

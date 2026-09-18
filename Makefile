@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help install hooks ci graph graph-status explore lint format typecheck test test-unit \
+	dashboard-install dashboard-dev dashboard-check dashboard-build \
         test-integration check api worker beat flower migrate migration downgrade \
         report-daily report-weekly report-monthly up down logs clean
 
@@ -47,7 +48,22 @@ test-unit: ## Fast unit tests only
 test-integration: ## Integration tests only
 	uv run pytest -m integration
 
-check: graph lint typecheck test ## Sync the graph, then run every quality gate
+check: graph lint typecheck test dashboard-check ## Sync the graph, then run every quality gate
+
+# --- dashboard (React + Vite; needs Node 20 via nvm) -------------------------
+NPM := . $(HOME)/.nvm/nvm.sh >/dev/null 2>&1 || true; command -v npm >/dev/null 2>&1
+
+dashboard-install: ## Install the dashboard's Node dependencies (npm ci)
+	@$(NPM) && (cd dashboard && npm ci --no-audit --no-fund) || echo "npm not available - install Node 20 via nvm"
+
+dashboard-dev: ## Vite dev server with /api proxied to the standalone port (4747)
+	@$(NPM) && (cd dashboard && npm run dev) || echo "npm not available - install Node 20 via nvm"
+
+dashboard-check: ## Dashboard lint, types and tests (skipped without npm)
+	@$(NPM) && (cd dashboard && npm run check) || echo "npm not available - dashboard checks skipped"
+
+dashboard-build: ## Build dashboard/dist (what the standalone port serves)
+	@$(NPM) && (cd dashboard && NODE_OPTIONS=--max-old-space-size=1024 npm run build) || echo "npm not available - install Node 20 via nvm"
 
 ci: ## Run the FULL local gate — exactly what pre-push runs. There is no hosted CI.
 	./.githooks/pre-push
