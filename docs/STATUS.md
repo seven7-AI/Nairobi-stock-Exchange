@@ -1589,3 +1589,36 @@ stocks table renders every captured row with links.
 
 Build: Recharts chunk 107 kB gzipped, loaded only by the detail page; the detail page
 itself 6.9 kB.
+
+## #55 Dashboard frontend: Analytics, Forecasts, Signals and Backtests  ✅ 2026-09-17
+
+- `AsOfSelector` bound to `?as_of=` over the dates the store holds; `FanChart` (q05–q95
+  and q25–q75 bands with the median, as prices from the reference close), `EquityCurve`
+  (portfolio and benchmarks rebased to 100, lines break where the index archive has
+  holes), `DrawdownChart`.
+- **Analytics** — the ranked universe on a date: rank, score (reason when unscored),
+  class, confidence, value-trap label, compounder, every factor's market percentile
+  (score and sector percentile on hover), relative 1m / 12m vs market and sector;
+  coverage chips per factor; search and sort with unscored rows last.
+- **Forecasts** — ticker and date selectors; availability card naming the reason and
+  the last known date with a one-click jump to it; per model a fan chart when quantiles
+  are known and the horizon table (expected, q05–q95, P(+), P(beat), P(dd), vol —
+  chips with reasons otherwise); scenarios; regime; the models' walk-forward accuracy
+  (n, MAE, RMSE, directional accuracy, benchmark hit rate, interval coverage);
+  disclaimers top and bottom; no "target price" anywhere.
+- **Signals** — buy candidates, watch, neutral / weak / avoid, value traps with risk
+  label and signals, compounders with score and criteria, valuation upside and
+  downside tables, positive and negative factor combinations, the risk-flag table
+  (severity, check, ticker, date, detail) and the not-scored reasons; every row links to
+  the stock and expands to its factors.
+- **Backtests** — the stored runs table (view button, purpose, model, period, top N,
+  cost rate, status, total return, CAGR, Sharpe, max drawdown), the selected run's
+  equity vs benchmarks and drawdown, headline metrics, benchmark metrics, weights and
+  costs, the model's registry status (`candidate`) and the disclaimer.
+
+Tests from the captured payloads: the analytics table lists every row in rank order
+with the unscored reason in the first unranked row and the selector on the stored
+date; the forecasts page shows the availability reason, the jump button, accuracy `n`,
+the disclaimer and no "target price"; signal buckets link to the stocks and show the
+value-trap signals; the backtests page shows the stored run, `^NASI`, the `candidate`
+badge and the disclaimer.
