@@ -329,9 +329,11 @@ async def test_stock_detail_carries_everything_with_reasons(dashboard_client: As
     assert body["facts"]["industry"] == "Commercial Banks" and body["facts"]["founded"] == 1896
     assert body["facts"]["listed_since"] == "2007-01-02"
     assert (
-        body["geographic"]["status"] == "unavailable" and "scraper" in body["geographic"]["reason"]
+        body["geographic"]["status"] == "unavailable"
+        and "company page" in body["geographic"]["reason"]
     )
-    assert body["geographic"]["segments"] == []
+    assert body["geographic"]["segments"] == [] and body["geographic"]["operating_countries"] == []
+    assert "not a revenue" in body["geographic"]["note"]
     # the weekly pipeline never ran on this store: forecasts absent, and it says so
     fa = body["forecast_availability"]
     assert fa["status"] == "unavailable" and fa["latest_known_as_of"] is None and fa["reason"]
@@ -526,6 +528,12 @@ async def test_live_forecasts_and_backtests() -> None:
             )
             runs = (await c.get(f"{BASE}/backtests")).json()
             assert runs["total"] >= 1
+            # a ticker re-scraped with the company page (nse-stock-scraper#5): known geography
+            brit = (await c.get(f"{BASE}/stocks/BRIT")).json()
+            if brit["geographic"]["status"] == "known":
+                assert brit["geographic"]["home_country"] == "Kenya"
+                assert "Kenya" in brit["geographic"]["operating_countries"]
+                assert brit["facts"]["ceo"] and brit["facts"]["website"]
             detail = (await c.get(f"{BASE}/backtests/{runs['items'][0]['run_id']}")).json()
             assert len(detail["equity"]) > 1000 and detail["max_drawdown"]["status"] == "known"
     finally:

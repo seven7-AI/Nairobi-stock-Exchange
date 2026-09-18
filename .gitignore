@@ -237,6 +237,8 @@ diagrams/forecasts/*.png
 reports/analytics-jobs.log
 
 # Dashboard: local overrides for the systemd unit, Node modules, the Vite build
+# (the Python `lib/` pattern above must not swallow the app's own src/lib)
+!dashboard/src/lib/
 deployment/systemd/nse-dashboard.env
 dashboard/node_modules/
 dashboard/dist/
