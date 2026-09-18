@@ -308,8 +308,34 @@ export interface StockDetail {
   prices: PriceHistory;
   sector_comparison: SectorComparisonRow[];
   statements: Statements;
-  facts: Record<string, unknown> & { company_name?: string | null; sector?: string | null; industry?: string | null; founded?: number | null; employees?: number | null; revenue?: number | null; listed_since?: IsoDate | null };
-  geographic: { status: string; reason: string; segments: unknown[] };
+  facts: Record<string, unknown> & {
+    company_name?: string | null;
+    sector?: string | null;
+    industry?: string | null;
+    founded?: number | null;
+    employees?: number | null;
+    revenue?: number | null;
+    listed_since?: IsoDate | null;
+    country?: string | null;
+    ceo?: string | null;
+    website?: string | null;
+    address?: string | null;
+    exchange?: string | null;
+    fiscal_year?: string | null;
+    currency?: string | null;
+    sic?: string | null;
+    executives?: { name: string; title: string | null }[] | null;
+  };
+  geographic: {
+    status: string;
+    reason: string | null;
+    home_country?: string | null;
+    operating_countries?: string[];
+    description?: string | null;
+    note?: string | null;
+    segments: unknown[];
+    coverage?: Measure | null;
+  };
   forecast_availability: Availability;
   links: Record<string, string>;
 }

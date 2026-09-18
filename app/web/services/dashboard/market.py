@@ -177,6 +177,17 @@ def _latest_quotes(settings: Settings, source: NseScraperSource) -> dict[str, Qu
                 "founded": profile.get("founded"),
                 "employees": profile.get("employees"),
                 "revenue": overview.get("revenue"),
+                # the company page's fields (nse-stock-scraper#5), absent until re-scraped
+                "country": profile.get("country"),
+                "description": profile.get("description"),
+                "ceo": profile.get("ceo"),
+                "website": profile.get("website"),
+                "address": profile.get("address"),
+                "exchange": profile.get("exchange"),
+                "fiscal_year": profile.get("fiscal_year"),
+                "currency": profile.get("currency"),
+                "sic": profile.get("sic"),
+                "executives": profile.get("executives"),
             },
             "stockanalysis_stocks",
         )

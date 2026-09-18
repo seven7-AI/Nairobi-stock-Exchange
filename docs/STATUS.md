@@ -1640,3 +1640,41 @@ badge and the disclaimer.
   the gate.)
 - Docs: `docs/dashboard.md` (pages, missing ≠ zero, live polling, development, tests,
   deploying) and a README section.
+
+## #64 Dashboard: geographic exposure from the company page  ✅ 2026-09-18
+
+`app/web/services/dashboard/geography.py` — `geographic_block(profile)`: when the
+scraped profile carries the company page's fields (nse-stock-scraper#5), the block is
+`known` with the home `country`, the `operating_countries` named in the business
+description (whole-word matches against an explicit list of country names, longest
+first so "South Sudan" never also yields "Sudan"; ordered by first mention; the home
+country listed first) and the description itself, plus a note that these are
+countries named in prose — not a revenue or asset split, which the source does not
+publish (`segments` stays empty). A profile captured before the company page was is
+`unavailable` with that reason; nothing is inferred. `latest_quotes` now carries the
+company page's fields in `facts` (country, description, CEO, website, address,
+exchange, fiscal year, reporting currency, SIC, executives) and the stock detail
+exposes them; the frontend's company card shows the country chips ("(home)" marked),
+the note, the description and executives behind `<details>`, and the contact / listing
+facts when present.
+
+Tests: `operating_countries` on the real KCB description (seven countries in order of
+first mention, no partial-word "Sudan", aliases folded), the block known only when the
+page was captured, the home country listed first even when the description omits it;
+the fixture KCB page still `unavailable` with the new reason; a `realdata` check on a
+re-scraped ticker.
+
+Also fixed here: the root `.gitignore`'s Python `lib/` pattern had swallowed
+`dashboard/src/lib/` (format, measure, palette, series helpers) — the frontend built and
+tested in the worktree but not from a fresh checkout of `main`; the pattern is negated
+for that directory and the four files are committed.
+
+Live (2026-09-18): BRIT, re-scraped with the company page → `known`, home Kenya,
+operating Kenya, Uganda, Tanzania, Rwanda, South Sudan, Mozambique, Malawi; CEO Tom
+Gitogo, https://britam.com, fiscal year January–December, KES, SIC 6300, four
+executives. KCB, SCOM, EQTY (not yet on a re-scraped slice) → `unavailable` with the
+reason. 4 of 92 quotes carry a country so far: today's 09:00 run issued the company
+page for its 16-symbol slice but **63 of its ~110 requests were rejected with 403** —
+a pre-existing rate limit (42–45 × 403 on the two runs before the change), now filed
+as nse-stock-scraper#7; the rotation fills the gap on later days, and the block stays
+honest about each ticker until then.

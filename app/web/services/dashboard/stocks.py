@@ -37,6 +37,7 @@ from app.web.services.analytics.research.profile import ResearchProfile, build_p
 from app.web.services.analytics.series import find_gaps
 from app.web.services.dashboard.cache import get_dashboard_cache, store_stamp
 from app.web.services.dashboard.common import from_row, known, measure, unavailable
+from app.web.services.dashboard.geography import geographic_block
 from app.web.services.dashboard.market import Quote, latest_quotes
 from app.web.services.market_data.sources.nse_scraper import NseScraperSource
 
@@ -100,10 +101,6 @@ STATEMENT_CONCEPTS: tuple[str, ...] = (
     "total_assets",
     "ocf",
     "fcf",
-)
-GEOGRAPHIC_REASON = (
-    "no geographic exposure data is captured by the scraper "
-    "(stockanalysis profiles carry industry, founding year and headcount only)"
 )
 
 
@@ -674,6 +671,15 @@ def build_stock_detail(
         "revenue": quote.facts.get("revenue"),
         "classification_source": profile.identity.get("classification_source"),
         "listed_since": None,
+        "country": quote.facts.get("country"),
+        "ceo": quote.facts.get("ceo"),
+        "website": quote.facts.get("website"),
+        "address": quote.facts.get("address"),
+        "exchange": quote.facts.get("exchange"),
+        "fiscal_year": quote.facts.get("fiscal_year"),
+        "currency": quote.facts.get("currency"),
+        "sic": quote.facts.get("sic"),
+        "executives": quote.facts.get("executives"),
     }
     span = source.fetch_observation_spans().get(symbol)
     if span:
@@ -686,7 +692,7 @@ def build_stock_detail(
         sector_comparison(settings, profile, index),
         statement_summary(source, symbol, as_of=as_of),
         facts,
-        {"status": "unavailable", "reason": GEOGRAPHIC_REASON, "segments": []},
+        geographic_block(quote.facts),
         forecast_availability,
         {
             "prices": f"/api/v1/dashboard/stocks/{symbol}/prices",

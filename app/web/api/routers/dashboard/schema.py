@@ -228,8 +228,13 @@ class SectorComparisonRow(BaseModel):
 
 class GeographicOut(BaseModel):
     status: str
-    reason: str
+    reason: str | None
+    home_country: str | None = None
+    operating_countries: list[str] = Field(default_factory=list)
+    description: str | None = None
+    note: str | None = None
     segments: list[dict[str, Any]] = Field(default_factory=list)
+    coverage: Measure | None = None
 
 
 class StockDetailOut(BaseModel):
