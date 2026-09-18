@@ -1678,3 +1678,33 @@ page for its 16-symbol slice but **63 of its ~110 requests were rejected with 40
 a pre-existing rate limit (42–45 × 403 on the two runs before the change), now filed
 as nse-stock-scraper#7; the rotation fills the gap on later days, and the block stays
 honest about each ticker until then.
+
+## Epic #57 — complete  ✅ 2026-09-18
+
+Ten issues merged in two days (nse-be PRs #58–#68, scraper PR #6), every one through the
+local gate with real-data validation recorded above. The dashboard is live at
+**http://194.195.87.62:4747** as the user systemd unit `nse-dashboard` — the app in
+standalone mode (only `/api/v1/dashboard/*`, `/health`, `/docs` and the built SPA; no
+auth, no Postgres, no Redis) on the port the user chose after the leftover container
+that held it was removed.
+
+| Layer | Where | State (2026-09-18) |
+|---|---|---|
+| API | `app/web/api/routers/dashboard/`, `app/web/services/dashboard/` — 13 read-only endpoints, cached per store version, `{value, status, reason}` everywhere | status, overview, market, stocks, stock detail, prices, statements, analytics, forecasts, signals, backtests |
+| SPA | `dashboard/` — React 19 + Vite 8 + TypeScript, Recharts in its own chunk, plain CSS, 27 tests on captured live payloads | Overview, Market, Stocks, Stock detail, Analytics, Forecasts, Signals, Backtests, System; ~89 kB gzipped JS for the shell, 107 kB more for chart pages |
+| Serving | `app/web/api/spa.py`, `DASHBOARD_STANDALONE`, `deployment/systemd/nse-dashboard.service`, `scripts/install_dashboard_service.sh` | enabled, active, `/health/ready` ok, store `20260915_0014`, scraper fresh |
+| Gate | `.githooks/pre-push` step 6 (npm ci, oxlint, tsc, vitest, vite build when `dashboard/` changed) | ran for real on #64: 27 tests, build green |
+| Scraper | nse-stock-scraper #5 — the company page's country, description, contact, details, executives | captured for 4 of 92 equities so far |
+
+What the dashboard says honestly today: the 572-day price gap makes most ≥3-month
+metrics, forecasts and the regime `unavailable` with the reason and the last known date
+(2024-12-31) one click away; 19 of 89 instruments are scored; geographic exposure is
+known only for re-scraped tickers (BRIT: Kenya, Uganda, Tanzania, Rwanda, South Sudan,
+Mozambique, Malawi — countries named in prose, not a revenue split). Open and recorded:
+the daily scrape loses roughly half its requests to a stockanalysis.com 403 rate limit
+that predates this work (nse-stock-scraper#7); no browser screenshot could be taken from
+the session (no Chrome extension reachable) — the live URL is the check; a redeploy after
+a frontend merge is a manual `scripts/install_dashboard_service.sh --build`.
+
+Docs: `docs/dashboard.md` (pages, missing ≠ zero, live polling, development, tests),
+`docs/quant-engine.md` (the endpoints and the service), the README's Dashboard section.
