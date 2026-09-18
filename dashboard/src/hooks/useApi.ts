@@ -1,6 +1,6 @@
 // Fetch a dashboard payload, keep the last good value while a refetch runs, and
 // refetch when the store version changes. Results are memoised per (key, version)
-// so navigating back is instant.
+// so navigating back is instant and a version bump invalidates everything.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { useVersion } from "./useVersion";
@@ -16,58 +16,43 @@ export interface ApiState<T> {
   refetch: () => void;
 }
 
+interface Outcome<T> {
+  key: string; // the base key, without the version
+  data?: T;
+  error?: string;
+  status?: number;
+}
+
 export function useApi<T>(key: string | null, loader: (signal: AbortSignal) => Promise<T>): ApiState<T> {
   const { version } = useVersion();
   const cacheKey = key === null ? null : `${key}#${version ?? "?"}`;
-  const [data, setData] = useState<T | undefined>(() =>
-    cacheKey ? (cache.get(cacheKey) as T | undefined) : undefined,
-  );
-  const [error, setError] = useState<string | undefined>();
-  const [status, setStatus] = useState<number | undefined>();
-  const [loading, setLoading] = useState(cacheKey !== null && !cache.has(cacheKey));
-  const [stale, setStale] = useState(false);
+  // The first poll only names the version we already fetched under "?": adopt it.
+  if (key !== null && cacheKey !== null && !cache.has(cacheKey) && cache.has(`${key}#?`)) {
+    cache.set(cacheKey, cache.get(`${key}#?`));
+    cache.delete(`${key}#?`);
+  }
+  const cached = cacheKey !== null ? (cache.get(cacheKey) as T | undefined) : undefined;
+  const [last, setLast] = useState<Outcome<T> | null>(null);
   const [tick, setTick] = useState(0);
+  // `loader` is recreated every render; the key identifies the request, so the
+  // effect reads the latest loader through a ref instead of depending on it.
   const loaderRef = useRef(loader);
-  loaderRef.current = loader;
+  useEffect(() => {
+    loaderRef.current = loader;
+  });
 
   useEffect(() => {
-    if (cacheKey === null) {
-      setLoading(false);
-      return;
-    }
-    // the first poll only names the version we already fetched under "?": adopt it
-    if (key !== null && !cache.has(cacheKey) && cache.has(`${key}#?`)) {
-      cache.set(cacheKey, cache.get(`${key}#?`));
-      cache.delete(`${key}#?`);
-    }
-    const cached = cache.get(cacheKey) as T | undefined;
-    if (cached !== undefined && tick === 0) {
-      setData(cached);
-      setLoading(false);
-      setStale(false);
-      return;
-    }
+    if (cacheKey === null || cache.has(cacheKey)) return;
     const controller = new AbortController();
-    setStale(data !== undefined);
-    setLoading(data === undefined);
-    setError(undefined);
     loaderRef
       .current(controller.signal)
       .then((next) => {
         cache.set(cacheKey, next);
-        setData(next);
-        setStatus(200);
+        setLast({ key: key ?? "", data: next, status: 200 });
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setStatus(err instanceof ApiError ? err.status : undefined);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setStale(false);
-        }
+        setLast({ key: key ?? "", error: err instanceof Error ? err.message : String(err), status: err instanceof ApiError ? err.status : undefined });
       });
     return () => controller.abort();
   }, [cacheKey, key, tick]);
@@ -77,7 +62,17 @@ export function useApi<T>(key: string | null, loader: (signal: AbortSignal) => P
     setTick((t) => t + 1);
   }, [cacheKey]);
 
-  return { data, error, status, loading, stale, refetch };
+  const same = last !== null && last.key === key;
+  const data = cached ?? (same ? last.data : undefined);
+  const error = cached === undefined && same ? last.error : undefined;
+  return {
+    data,
+    error,
+    status: same ? last.status : undefined,
+    loading: cacheKey !== null && cached === undefined && data === undefined && error === undefined,
+    stale: cacheKey !== null && cached === undefined && data !== undefined,
+    refetch,
+  };
 }
 
 export function clearApiCache(): void {
