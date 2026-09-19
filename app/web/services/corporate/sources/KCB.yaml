@@ -1,0 +1,28 @@
+# KCB Group PLC - investor relations rule file.
+# Download links are signed and re-issued on every page render; a document's
+# identity is therefore the page URL plus the link text (see DocumentCandidate).
+ticker: KCB
+ir_url: https://kcbgroup.com/investor-relations
+base_url: https://kcbgroup.com
+pages:
+  - url: https://kcbgroup.com/integrated-reports
+    kind: integrated_report
+    href_pattern: '/download/'
+    text_pattern: 'Integrated Report'
+    fiscal_year_pattern: '(?P<fy>20\d{2}) Integrated Report'
+    period_end_month: 12
+    period_end_day: 31
+    notes: "2020-2025 as of 2026-09-19; the full annual report with the subsidiaries and segment notes"
+  - url: https://kcbgroup.com/financial-statements
+    kind: results
+    href_pattern: '/download/'
+    text_pattern: '(Audited|Unaudited) (Financial Statements|Results)'
+    notes: "group quarterly / half-year / full-year statements as published"
+  - url: https://kcbgroup.com/subsidiary-financial-statements
+    kind: subsidiary_statements
+    href_pattern: '/download/'
+    text_pattern: 'Financial|Financials'
+    exclude_text: 'Asset Management|Money Market|Fund'
+    notes: "KCB Bank Tanzania / Uganda / Burundi, BPR Bank Rwanda, KCB Investment Bank - local-currency accounts"
+news_pages:
+  - https://kcbgroup.com/press-release

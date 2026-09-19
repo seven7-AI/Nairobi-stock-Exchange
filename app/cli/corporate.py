@@ -24,6 +24,10 @@ entities_app = typer.Typer(help="Legal entities and their identifiers.")
 corporate_app.add_typer(entities_app, name="entities")
 gleif_app = typer.Typer(help="GLEIF LEI enrichment.")
 corporate_app.add_typer(gleif_app, name="gleif")
+documents_app = typer.Typer(help="Collected documents.")
+corporate_app.add_typer(documents_app, name="documents")
+sources_app = typer.Typer(help="Document sources and their health.")
+corporate_app.add_typer(sources_app, name="sources")
 console = Console()
 
 
@@ -230,6 +234,106 @@ def entities_show(ticker: str = typer.Argument(..., help="Listed company ticker"
                 row.registration_number or "-",
                 row.resolution_method,
                 f"{row.confidence:.2f}",
+            )
+        console.print(table)
+
+
+@corporate_app.command("collect")
+def collect(
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Limit to these companies."),
+    source: list[str] | None = typer.Option(
+        None, "--source", help="Limit to these sources (ir, nse, cbk, bot, cma or ir:KCB)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Discover only; fetch nothing."),
+    max_documents: int | None = typer.Option(
+        None, "--max", min=1, help="Override CORPORATE_MAX_DOCUMENTS_PER_RUN for this run."
+    ),
+) -> None:
+    """Discover and fetch annual reports, statements, announcements and regulator reports."""
+    from app.web.services.corporate.collect.service import collect_documents
+
+    settings = _settings()
+    result = collect_documents(
+        settings,
+        tickers=ticker or None,
+        sources=source or None,
+        dry_run=dry_run,
+        max_documents=max_documents,
+    )
+    console.print(
+        f"[green]collect:[/green] {result.sources} sources, {result.discovered} candidates"
+        + (" (dry run)" if result.dry_run else "")
+        + f" - fetched {result.fetched}, new versions {result.new_versions}, "
+        f"unchanged {result.unchanged}, too large {result.too_large}, failed {result.failed}, "
+        f"over budget {result.skipped_budget}"
+    )
+    for name, (status, detail) in sorted(result.health.items()):
+        colour = {"ok": "green", "degraded": "yellow"}.get(status, "red")
+        console.print(f"  [{colour}]{status:9s}[/{colour}] {name}: {detail[:120]}")
+    for title in result.fetched_titles:
+        console.print(f"  [green]+[/green] {title}")
+    for line in result.failures:
+        console.print(f"  [yellow]![/yellow] {line}")
+
+
+@documents_app.command("list")
+def documents_list(
+    ticker: str | None = typer.Option(None, "--ticker"),
+    status: str | None = typer.Option(
+        None, "--status", help="pending, extracted, ocr_pending, ..."
+    ),
+    kind: str | None = typer.Option(None, "--kind"),
+) -> None:
+    """Current document versions in the store (files live under CORPORATE_DOCUMENTS_DIR)."""
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.corporate_documents import document_counts, load_documents
+
+    settings = _settings()
+    with analytics_session(settings) as session:
+        rows = load_documents(session, ticker_symbol=ticker, parse_status=status, kind=kind)
+        counts = document_counts(session)
+        table = Table(title="corporate documents")
+        for column in ("id", "ticker", "source", "kind", "FY", "title", "MB", "v", "status"):
+            table.add_column(column)
+        for row in rows:
+            table.add_row(
+                str(row.id),
+                row.ticker_symbol or "-",
+                row.source,
+                row.kind,
+                str(row.fiscal_year or "-"),
+                row.title[:60],
+                f"{row.bytes / 1e6:.1f}",
+                str(row.version_no),
+                row.parse_status,
+            )
+        console.print(table)
+        console.print(
+            f"{len(rows)} shown; store: {counts['by_parse_status']} "
+            f"{counts['bytes'] / 1e6:.0f} MB across {counts['tickers']} tickers"
+        )
+
+
+@sources_app.command("health")
+def sources_health() -> None:
+    """Every registered source with its last outcome."""
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.corporate_documents import load_sources
+
+    settings = _settings()
+    with analytics_session(settings) as session:
+        table = Table(title="document sources")
+        for column in ("name", "kind", "health", "last ok", "failures", "last error / notes"):
+            table.add_column(column)
+        for row in load_sources(session):
+            colour = {"ok": "green", "degraded": "yellow"}.get(row.health, "red")
+            table.add_row(
+                row.name,
+                row.kind,
+                f"[{colour}]{row.health}[/{colour}]",
+                row.last_ok_at.strftime("%Y-%m-%d") if row.last_ok_at else "-",
+                str(row.consecutive_failures),
+                (row.last_error or row.notes or "")[:80],
             )
         console.print(table)
 

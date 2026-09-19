@@ -322,11 +322,13 @@ def test_robots_disallow_is_respected_and_missing_robots_allows() -> None:
 
 
 def test_logs_never_carry_a_signed_query_string(caplog: pytest.LogCaptureFixture) -> None:
+    logging.getLogger("httpx").setLevel(logging.INFO)  # as a fresh process would have it
     client, _ = _client(lambda r: httpx.Response(200, content=b"x"))
     url = "https://kcb.example/download/abc?signature=SECRETSIG123&expires=1"
     with caplog.at_level(logging.INFO):
         assert client.get(url).ok
     assert "SECRETSIG123" not in caplog.text and "signature=" not in caplog.text
+    assert logging.getLogger("httpx").level == logging.WARNING  # the library's own URL log is off
     assert redacted_url(url) == "https://kcb.example/download/abc"
 
 

@@ -1,0 +1,15 @@
+# Equity Group Holdings. The site sits behind an Incapsula JavaScript challenge
+# (probed 2026-09-19): the collector receives a challenge page, never the
+# content. Kept so the health check records it; the NSE announcements carry the
+# group's published results.
+ticker: EQTY
+ir_url: https://equitygroupholdings.com/investor-relations/
+base_url: https://equitygroupholdings.com
+pages:
+  - url: https://equitygroupholdings.com/investor-relations/
+    kind: annual_report
+    href_pattern: '\.pdf$'
+    text_pattern: 'Annual Report|Integrated'
+    period_end_month: 12
+    period_end_day: 31
+notes: "Incapsula challenge page; recorded as blocked"

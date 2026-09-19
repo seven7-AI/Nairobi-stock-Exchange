@@ -1,0 +1,14 @@
+# Safaricom PLC. The IR site answers 403 from its CDN to this collector's
+# User-Agent (probed 2026-09-19); the source is kept so the health check records
+# it. Safaricom's audited results reach the store through the NSE announcements.
+ticker: SCOM
+ir_url: https://www.safaricom.co.ke/investor-relations-landing
+base_url: https://www.safaricom.co.ke
+pages:
+  - url: https://www.safaricom.co.ke/investor-relations-landing/reports/annual-reports
+    kind: annual_report
+    href_pattern: '\.pdf$'
+    text_pattern: 'Annual Report|Integrated'
+    period_end_month: 3
+    period_end_day: 31
+notes: "CDN returns 403 to the collector (bot protection); recorded as blocked, not retried harder"

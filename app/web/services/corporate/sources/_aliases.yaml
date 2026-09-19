@@ -1,0 +1,8 @@
+# Curated entity renames with evidence. The resolver never merges these on its
+# own (the names differ in a distinguishing token); this file says they are the
+# same legal entity across time. Consumed from C4 onwards.
+aliases:
+  - from: "Kenya Commercial Bank Rwanda Ltd"
+    to: "KCB Bank Rwanda PLC"
+    jurisdiction: RW
+    evidence: "KCB Group annual reports 2016-2019 name the Rwandan subsidiary both ways; rebrand to KCB Bank Rwanda in 2018"

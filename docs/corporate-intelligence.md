@@ -205,6 +205,35 @@ semantics above), `close_valid_time` ends a relationship with a new version, and
 `as_of` / `as_known_on` / `current` compose the two time axes. The subsidiaries note
 parser (C4) is what fills it.
 
+## Document collection (C3)
+
+`nse-analysis corporate collect` walks every registered source, records each
+source's health, and fetches what is new:
+
+| Source | What it lists | State (2026-09-19) |
+|---|---|---|
+| `ir:KCB` (`sources/KCB.yaml`) | integrated reports 2020–2025, group quarterly/annual statements, **subsidiary** statements (KCB Bank Tanzania, Uganda, Burundi, BPR Bank Rwanda, KCB Investment Bank) | ok — download links are signed and re-issued on every render; identity = page URL + link text, the signed URL is never stored or logged |
+| `ir:SCOM` | annual reports | **blocked** — the CDN answers 403 to the collector; Safaricom's audited results arrive through the NSE |
+| `ir:EQTY` | annual reports | **blocked** — Incapsula JavaScript challenge |
+| `nse` | listed-company announcements (audited/unaudited results, notices) and circulars | ok — server-rendered current year only; earlier years sit behind a JavaScript year filter (not followed yet); titles are attributed to a ticker by company name, or left unattributed |
+| `cbk` | Bank Supervision Annual Reports 2017–2024 | ok |
+| `bot` | Bank of Tanzania Banking / Financial Sector Supervision Annual Reports 2021–2025 | ok |
+| `cma` | issuer filings | **down** — the resource centre returns 502; the adapter records it and collects nothing |
+| Bank of Uganda | — | not registered: a JavaScript application |
+
+A company's rule file (`app/web/services/corporate/sources/<TICKER>.yaml`) is data:
+which pages, which link/text patterns, which document kind, how to read the fiscal
+year. Adding a company is a YAML file.
+
+**Versions, not overwrites.** `corporate_documents` is one row per file version at
+an identity (source + stable URL). A re-run sends a conditional GET (or compares the
+sha) and records `unchanged`; new bytes at a known identity are `version_no + 1` with
+the previous row's `superseded_by_id` set; files under `CORPORATE_DOCUMENTS_DIR/
+<ticker|regulator>/<sha256>.pdf` are content-addressed and never deleted. A body that
+is not a PDF (a login page) is a recorded failure, not a document. Every run is
+bounded by `CORPORATE_MAX_DOCUMENTS_PER_RUN` and the request budget; discovery beyond
+the cap is counted, not fetched.
+
 ## Sources and their hierarchy
 
 | Field | Order of authority |
@@ -265,6 +294,9 @@ uv run nse-analysis corporate universe show [KCB]             # the universe, or
 uv run nse-analysis corporate universe diff [--days 7]        # recent listing-status changes
 uv run nse-analysis corporate gleif sync [--ticker KCB]       # LEI / legal name / registration number enrichment
 uv run nse-analysis corporate entities show KCB               # the entities resolved under a listed group
+uv run nse-analysis corporate collect [--ticker KCB] [--source ir|nse|cbk|bot] [--dry-run] [--max N]
+uv run nse-analysis corporate documents list [--ticker KCB] [--status pending]
+uv run nse-analysis corporate sources health
 ```
 
 Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
@@ -278,7 +310,7 @@ Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
 | C0 skeleton, settings, config, countries, polite client, CLI, this document | #71 | done 2026-09-19 | `httpx`, `pymupdf`, `pdfplumber` added; Camelot/OCR need `gs` / `tesseract` / `pdftoppm` (not installed on this box yet) |
 | C1 canonical company universe | #72 | done 2026-09-19 | migration `20260919_0015`; live: 81 companies — 57 listed, 6 newly listed, 10 delisted (2012 archive names), 8 unknown; ISIN for 66, website for 61, sector for 81; home country from a scraped profile for 4, assumed `KE` for 77 |
 | C2 GLEIF, entities, resolver, bitemporal helpers | #73 | done 2026-09-19 | migration `20260919_0016`; live: 81 listed entities; GLEIF exact matches for 12 (ABSA, BAMB, BAT, DTK, EABL, FMLY, KQ, NBK, SCBK, SCOM, TOTL via its former name, UTK), 69 checked with no record — KCB Group, Equity Group, NCBA Group, Co-op and Britam have no LEI; 81 requests, cached 7 days |
-| C3 document collector | — | planned | |
+| C3 document collector | #75 | done 2026-09-19 | migration `20260919_0017`; live counts below |
 | C4 PDF text/tables, subsidiaries parser, labels v1 | — | planned | |
 | C5 segment/operations parsers, disclosure statuses, labels v2 | — | planned | |
 | C6 bitemporal writers, PIT queries | — | planned | |
