@@ -246,3 +246,6 @@ dashboard/coverage/
 
 # corporate intelligence layer: collected PDFs and API caches
 data/corporate/
+
+# local backups of the analytics store taken before migrations
+data/backups/

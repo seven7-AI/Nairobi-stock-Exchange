@@ -1756,3 +1756,51 @@ gated off.
 Remaining: C1–C10 and A1–A9 per epic #70; the user installs `ghostscript`,
 `tesseract-ocr` and `poppler-utils` when convenient — C4/C5 run without them and record
 `ocr_pending` / `skipped_capability` until they appear.
+
+## #72 Corporate intelligence layer: the canonical company universe  ✅ 2026-09-19
+
+Phase C1 of epic #70. One row per listed company in `corporate_companies` (migration
+`20260919_0015`), every field with a source, a confidence and its evidence in
+`field_sources`; the raw evidence in append-only `corporate_sightings`.
+
+- **`app/web/services/corporate/universe/nse_page.py`** — the NSE listed-companies page
+  is server-rendered WordPress: name in an `<h6>`, `Trading Symbol:` and `ISIN CODE:`
+  lines, a logo link to the company website, under `<h3>` sector headings. The parser
+  strips par-value suffixes (`KCB Group Ltd Ord 1.00` → `KCB Group Ltd`), keeps
+  duplicates for the caller to dedupe, and maps `SKL.O0000` to `SKL` (share-class code).
+- **`rules.py`** — pure listing-status rules: `listed` needs an observation within 30 d;
+  `newly_listed` a first observation within 90 d; `suspended` only from an announcement
+  (C9), lifted by one; `delisted` from an announcement, the 2012-12-31 archive cut-over,
+  or ≥ 3 page runs absent **and** ≥ 60 d untraded; otherwise the previous status is
+  kept with a `kept:` reason or `unknown` with the evidence. The page alone never lists
+  and never delists — it still names ARM, Deacons and Mumias. Reasons are dates, not day
+  counts, so unchanged companies are `unchanged` on every run.
+- **`builder.py`** — per-field source hierarchy (scraper master → NSE page → profile →
+  assumed `KE` at 0.5), alias lineage into `name_history` (ABSA ← BBK rebrand, NCBA ← NIC
+  merger), preference shares folded into `exchange_ids`, statuses appended to
+  `status_history` only when they change; a better source (GLEIF, C2) is never
+  out-ranked by a weaker one.
+- **`service.py`** — `refresh_universe`: reads the scraper's instruments, aliases,
+  observation spans and profile rows; fetches the page through `PoliteClient` (a failure
+  is a warning, the build continues on stored sightings); records sightings per run;
+  derives "on the page" from the latest recorded run so `--no-network` reuses it.
+- CLI `corporate universe build [--no-network] | show [T] | diff [--days]`.
+
+Tests: `app/tests/unit/test_corporate_universe.py` — 27 tests: the parser on a trimmed
+copy of the real page markup (12 blocks, duplicates, missing website, share-class
+symbol), each status rule, the builder over the 12-instrument fixture database (every
+field sourced, unmatched page entries reported, aliases, profile country, prior state
+kept), the service on a temp store (idempotent second run `0/0/10`, sightings, page
+absences accumulating to a delisting, 503 as a warning), the CLI, and a realdata run
+(≥ 79 companies, KCB ISIN `KE0000000315`, ABSA ← BBK).
+
+Live (2026-09-19, store migrated 0014 → 0015 after a backup): 81 companies — 57
+listed, 6 newly listed, 10 delisted, 8 unknown; ISIN for 66, website for 61, sector for
+all 81; home country captured for 4, assumed for 77 (confidence 0.5). The first live
+build exposed two rule defects that were fixed before merge: the page alone was listing
+Mumias (untraded since 2024-12-31), and a `--no-network` run treated everyone as absent
+from the page.
+
+Remaining: GLEIF enrichment (C2) will raise legal-name confidence to 1.0 where an LEI
+exists; suspensions arrive with announcements (C9); home country stays assumed until
+the scraper re-captures company pages (nse-stock-scraper#7).

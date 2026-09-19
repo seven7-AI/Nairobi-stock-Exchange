@@ -13,11 +13,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from app.cli.analytics import _settings
+from app.cli.analytics import _scraper_source, _settings
 from app.web.services.corporate.config import DEFAULT_CORPORATE_CONFIG
 from app.web.services.corporate.extract.capabilities import detect_capabilities
 
 corporate_app = typer.Typer(help="Corporate structure, geographic footprint and expansion facts.")
+universe_app = typer.Typer(help="The canonical company universe.")
+corporate_app.add_typer(universe_app, name="universe")
 console = Console()
 
 
@@ -53,6 +55,129 @@ def capabilities() -> None:
     console.print(table)
     console.print(f"documents: {settings.corporate_documents_dir}")
     console.print(f"cache:     {settings.corporate_cache_dir}")
+
+
+@universe_app.command("build")
+def universe_build(
+    no_network: bool = typer.Option(
+        False, "--no-network", help="Skip the NSE listed-companies page; use stored sightings."
+    ),
+) -> None:
+    """Rebuild corporate_companies from the scraper, the NSE page and stored sightings."""
+    from app.web.services.corporate.universe.service import refresh_universe
+
+    settings, source = _scraper_source()
+    result = refresh_universe(settings, source, network=not no_network)
+    console.print(
+        f"[green]universe:[/green] {result.companies} companies - "
+        f"created {result.created}, updated {result.updated}, unchanged {result.unchanged}; "
+        f"sightings recorded {result.sightings_recorded}; page: {result.page}"
+    )
+    for ticker, (before, after) in sorted(result.status_changes.items()):
+        console.print(f"  {ticker:7s} {before or '-'} -> {after}")
+    for line in result.unmatched_listings:
+        console.print(f"  [yellow]unmatched[/yellow] {line}")
+    for warning in result.warnings:
+        console.print(f"  [yellow]warning[/yellow] {warning}")
+
+
+@universe_app.command("show")
+def universe_show(
+    ticker: str | None = typer.Argument(None, help="One company; omit for the whole universe."),
+) -> None:
+    """The universe, or one company with every field's source and confidence."""
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.corporate_companies import (
+        load_companies,
+        load_company,
+        sightings_for,
+    )
+
+    settings = _settings()
+    with analytics_session(settings) as session:
+        if ticker is None:
+            table = Table(title="corporate universe")
+            for column in ("ticker", "name", "status", "home", "sector", "isin", "conf"):
+                table.add_column(column)
+            for row in load_companies(session):
+                table.add_row(
+                    row.ticker_symbol,
+                    row.canonical_name,
+                    row.listing_status,
+                    row.home_country,
+                    row.sector_code or "-",
+                    row.isin or "-",
+                    f"{row.confidence:.2f}",
+                )
+            console.print(table)
+            return
+        row = load_company(session, ticker)  # type: ignore[assignment]
+        if row is None:
+            raise typer.BadParameter(f"{ticker} is not in the universe (run `universe build`)")
+        console.print(f"[bold]{row.ticker_symbol}[/bold] {row.canonical_name}")
+        console.print(f"  legal name : {row.legal_name}")
+        console.print(f"  status     : {row.listing_status} - {row.status_reason}")
+        console.print(f"  home       : {row.home_country}   sector: {row.sector_code or '-'}")
+        console.print(f"  isin       : {row.isin or '-'}   lei: {row.lei or '-'}")
+        console.print(f"  website    : {row.website or '-'}")
+        console.print(
+            f"  listed     : {row.first_listed or '-'}   delisted: {row.delisted_on or '-'}"
+        )
+        table = Table(title="field sources")
+        table.add_column("field")
+        table.add_column("source")
+        table.add_column("confidence", justify="right")
+        table.add_column("evidence")
+        for name, src in sorted(row.field_sources.items()):
+            table.add_row(
+                name, str(src["source"]), f"{src['confidence']:.2f}", str(src["evidence"])
+            )
+        console.print(table)
+        if row.name_history:
+            console.print("  name history:")
+            for entry in row.name_history:
+                console.print(
+                    f"    {entry.get('ticker')} ({entry.get('reason')}): {entry.get('evidence')}"
+                )
+        if row.status_history:
+            console.print("  status history:")
+            for entry in row.status_history:
+                console.print(
+                    f"    {entry.get('recorded')} {entry.get('from_status') or '-'} -> "
+                    f"{entry.get('status')}: {entry.get('reason')}"
+                )
+        sightings = sightings_for(session, ticker)
+        console.print(
+            f"  sightings  : {len(sightings)} (latest {sightings[0].seen_at:%Y-%m-%d} "
+            if sightings
+            else "  sightings  : none"
+        )
+
+
+@universe_app.command("diff")
+def universe_diff(
+    days: int = typer.Option(7, "--days", min=1, help="Status changes recorded within N days."),
+) -> None:
+    """Companies whose listing status changed recently, with the reason."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.corporate_companies import load_companies
+
+    settings = _settings()
+    since = (datetime.now(UTC) - timedelta(days=days)).date().isoformat()
+    changes = 0
+    with analytics_session(settings) as session:
+        for row in load_companies(session):
+            for entry in row.status_history:
+                if str(entry.get("recorded", "")) >= since:
+                    changes += 1
+                    console.print(
+                        f"{row.ticker_symbol:7s} {entry.get('recorded')} "
+                        f"{entry.get('from_status') or '-'} -> {entry.get('status')}: "
+                        f"{entry.get('reason')}"
+                    )
+    console.print(f"{changes} status change(s) in the last {days} days")
 
 
 __all__ = ["corporate_app"]

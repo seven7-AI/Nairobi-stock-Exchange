@@ -50,6 +50,8 @@ class CorporateConfig(BaseModel):
 
     # --- universe status rules ------------------------------------------------
     listed_observation_days: int = Field(default=30, ge=1)
+    #: A company whose first observation is this recent is ``newly_listed``.
+    newly_listed_days: int = Field(default=90, ge=1)
     delist_missing_runs: int = Field(default=3, ge=1)
     delist_missing_days: int = Field(default=60, ge=1)
 
