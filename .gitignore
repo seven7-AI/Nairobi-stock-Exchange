@@ -243,3 +243,6 @@ deployment/systemd/nse-dashboard.env
 dashboard/node_modules/
 dashboard/dist/
 dashboard/coverage/
+
+# corporate intelligence layer: collected PDFs and API caches
+data/corporate/

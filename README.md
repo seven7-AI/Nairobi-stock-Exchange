@@ -210,6 +210,13 @@ standalone mode on port 4747 — `http://194.195.87.62:4747`. See `docs/dashboar
 (pages, missing ≠ zero rendering, development, tests) and `docs/quant-engine.md`
 (the `/api/v1/dashboard` endpoints and the systemd service).
 
+## Corporate intelligence layer
+
+Which entities each listed company owns, where it operates and what those operations
+earn, collected from annual reports and free public registries and stored bitemporally
+with provenance on every fact — `nse-analysis corporate …`. Design record and phase
+status: `docs/corporate-intelligence.md` (epic #70).
+
 ## Deployment
 
 ```bash

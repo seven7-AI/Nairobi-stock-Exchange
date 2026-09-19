@@ -178,6 +178,69 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
 
+    # --- corporate intelligence layer ---------------------------------------
+    # Annual reports, subsidiary notes and country segment facts collected from
+    # free public sources (company IR sites, the NSE, CBK, GLEIF, World Bank).
+    # PDFs live on disk under corporate_documents_dir and are never stored in a
+    # database or served by the API. Thresholds that shape the facts (fuzzy
+    # matching, tolerances) live in ``app/web/services/corporate/config.py`` so
+    # their hash stays separate from the analytics config hash.
+    corporate_documents_dir: Path = Field(
+        default=ROOT_DIR / "data" / "corporate" / "documents",
+        alias="CORPORATE_DOCUMENTS_DIR",
+        description="Collected annual reports and filings, one folder per ticker.",
+    )
+    corporate_cache_dir: Path = Field(
+        default=ROOT_DIR / "data" / "corporate" / "cache",
+        alias="CORPORATE_CACHE_DIR",
+        description="Cached GLEIF and World Bank responses (JSON, with fetched_at).",
+    )
+    corporate_http_delay_seconds: float = Field(
+        default=3.0,
+        ge=0.5,
+        le=60.0,
+        alias="CORPORATE_HTTP_DELAY_SECONDS",
+        description="Minimum spacing between two requests to the same host.",
+    )
+    corporate_http_timeout_seconds: float = Field(
+        default=30.0, ge=1.0, le=300.0, alias="CORPORATE_HTTP_TIMEOUT_SECONDS"
+    )
+    corporate_user_agent: str = Field(
+        default="nse-be corporate collector (+https://github.com/seven7-AI/Nairobi-stock-Exchange)",
+        alias="CORPORATE_USER_AGENT",
+    )
+    corporate_contact_email: str = Field(
+        default="",
+        alias="CORPORATE_CONTACT_EMAIL",
+        description="Appended to the User-Agent as a contact when set.",
+    )
+    corporate_max_document_bytes: int = Field(
+        default=60_000_000, ge=1_000_000, alias="CORPORATE_MAX_DOCUMENT_BYTES"
+    )
+    corporate_max_documents_per_run: int = Field(
+        default=40, ge=1, alias="CORPORATE_MAX_DOCUMENTS_PER_RUN"
+    )
+    corporate_max_requests_per_run: int = Field(
+        default=300,
+        ge=10,
+        alias="CORPORATE_MAX_REQUESTS_PER_RUN",
+        description="Discovery stops cleanly (recorded, not failed) when exhausted.",
+    )
+    #: OCR needs tesseract + poppler on the box; off by default so a scanned page is
+    #: recorded as ``ocr_pending`` rather than attempted with missing binaries.
+    corporate_ocr_enabled: bool = Field(default=False, alias="CORPORATE_OCR_ENABLED")
+    #: LLM table clean-up is built but gated: it needs the AI layer on and a key, and
+    #: it may only re-shape text a deterministic stage already extracted.
+    corporate_llm_cleanup_enabled: bool = Field(
+        default=False, alias="CORPORATE_LLM_CLEANUP_ENABLED"
+    )
+    corporate_gleif_base_url: str = Field(
+        default="https://api.gleif.org/api/v1", alias="CORPORATE_GLEIF_BASE_URL"
+    )
+    corporate_worldbank_base_url: str = Field(
+        default="https://api.worldbank.org/v2", alias="CORPORATE_WORLDBANK_BASE_URL"
+    )
+
     # --- public dashboard (read-only, unauthenticated by design) -----------
     #: Mount ``/api/v1/dashboard`` - derived analytics and prices from the two
     #: SQLite files only. The single documented exception to the RBAC rule.
@@ -243,6 +306,15 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     @model_validator(mode="after")
+    def _gate_llm_cleanup(self) -> Settings:
+        """LLM clean-up cannot run without the AI layer and a key; force it off."""
+        if self.corporate_llm_cleanup_enabled and not (
+            self.ai_narratives_enabled and self.anthropic_api_key
+        ):
+            self.corporate_llm_cleanup_enabled = False
+        return self
+
+    @model_validator(mode="after")
     def _reject_dev_secrets_in_production(self) -> Settings:
         """A deployed service must never run on the development signing key."""
         if self.is_production and self.jwt_secret_key == DEV_JWT_SECRET:
@@ -270,6 +342,8 @@ def get_settings() -> Settings:
         settings.logs_dir,
         settings.diagrams_dir,
         settings.analytics_db_path.parent,
+        settings.corporate_documents_dir,
+        settings.corporate_cache_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
     return settings

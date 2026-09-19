@@ -1708,3 +1708,51 @@ a frontend merge is a manual `scripts/install_dashboard_service.sh --build`.
 
 Docs: `docs/dashboard.md` (pages, missing ≠ zero, live polling, development, tests),
 `docs/quant-engine.md` (the endpoints and the service), the README's Dashboard section.
+
+## #71 Corporate intelligence layer: skeleton, settings, config, countries, polite client  ✅ 2026-09-19
+
+Phase C0 of epic #70 — the foundation for the corporate structure / geographic footprint
+layer. No tables yet, no network in tests. The design record is
+`docs/corporate-intelligence.md` (decisions, layers L1–L7, disclosure statuses,
+bitemporal semantics with the KCB-2018 example, provenance schema, source hierarchy,
+extraction ladder, a status table every later phase updates).
+
+- **`app/web/services/corporate/config.py`** — `CorporateConfig`: frozen, hashed
+  thresholds (fuzzy acceptance 0.92 / margin 0.80, low-confidence 0.7, segment-sum
+  tolerance 1 %, universe status windows, event windows) with its **own**
+  `calc_versions` row (`name="corporate"`, `register_corporate_version`). Deliberately
+  not nested in `AnalyticsConfig`: that hash is part of every job fingerprint, and
+  nesting would recompute every pipeline once.
+- **`countries.py`** — report spellings → ISO-3166 alpha-2 (`DRC`, `DR Congo`,
+  `Congo (Kinshasa)` → `CD`; `Republic of Uganda` → `UG`; unknown → `None`, never a
+  guess); region labels (`Rest of East Africa`, `International`, `Other`) →
+  `regional_only` slugs that know whether the home market may be inside;
+  `jurisdiction_from_name("KCB Bank Tanzania Limited") == "TZ"`, `"Jubilee Holdings
+  Limited"` → `None`.
+- **`http.py`** — `PoliteClient` (sync httpx): per-host spacing (3 s), 3 retries with
+  2/8/30 s backoff on 429/5xx honouring `Retry-After`, `robots.txt` (missing = allowed),
+  conditional GET → `not_modified`, HEAD for validators, byte cap by header and by body
+  → `too_large`, per-run request budget → `budget_exhausted` as an outcome; every logged
+  URL has its query string stripped (KCB's signed links are credentials).
+- **`extract/capabilities.py`** — `detect_capabilities()`: PyMuPDF / pdfplumber /
+  Camelot + ghostscript / pytesseract + tesseract + poppler / LLM gate, with a reason
+  per unavailable stage; recorded on every extraction row from C4.
+- **Settings** — `CORPORATE_*` (documents and cache dirs created by `get_settings()`,
+  HTTP delay/timeout/UA/contact, byte/document/request budgets, `CORPORATE_OCR_ENABLED`,
+  `CORPORATE_LLM_CLEANUP_ENABLED` forced off without the AI layer and a key, GLEIF and
+  World Bank base URLs); `.gitignore` `data/corporate/`; pytest marker `documents`.
+- **CLI** — `nse-analysis corporate config | capabilities` (`app/cli/corporate.py`,
+  registered beside `analytics`). Dependencies: `httpx`, `pymupdf`, `pdfplumber`.
+
+Tests: `app/tests/unit/test_corporate_foundation.py` — 48 tests: settings aliases and
+the LLM gate, config hash stable/distinct/registered under its own name, 21 country
+spellings, region classification, jurisdiction-from-name, and the client against
+`httpx.MockTransport` (spacing, backoff + `Retry-After`, persistent 5xx and transport
+errors as outcomes, byte cap, 304, HEAD, budget, robots, no signed query string in
+logs). Live: `corporate capabilities` on this box → PyMuPDF and pdfplumber available;
+Camelot needs `camelot-py` + `gs`, OCR needs the flag + `tesseract` + `pdftoppm`, LLM
+gated off.
+
+Remaining: C1–C10 and A1–A9 per epic #70; the user installs `ghostscript`,
+`tesseract-ocr` and `poppler-utils` when convenient — C4/C5 run without them and record
+`ocr_pending` / `skipped_capability` until they appear.
