@@ -1860,3 +1860,49 @@ enrichment. 81 requests at 3 s spacing, cached for 7 days.
 
 Remaining: the subsidiaries-note parser (C4) fills `corporate_relationships`; the review
 queue (C7) receives the provisional entities; merges are exercised then.
+
+## #75 Corporate intelligence layer: the document collector  ✅ 2026-09-19
+
+Phase C3 of epic #70. Free public documents into a versioned store: metadata in the
+analytics chain (migration `20260919_0017`: `corporate_sources`, `corporate_documents`,
+`corporate_extractions`), files on disk under `CORPORATE_DOCUMENTS_DIR`, never deleted.
+
+- **`collect/base.py`** — `DocumentSource` protocol, `DocumentCandidate` whose identity
+  for a signed link is the page URL + a hash of the link text (the signed URL is a
+  credential: never persisted, never logged whole), anchor selection by href/text regex.
+- **`collect/ir_sites.py` + `sources/<TICKER>.yaml`** — rule files as data. `KCB.yaml`:
+  integrated reports 2020–2025, group quarterly/annual statements, and the
+  **subsidiary** statements (KCB Bank Tanzania, Uganda, Burundi, BPR Bank Rwanda, KCB
+  Investment Bank — local-currency accounts). `SCOM.yaml` / `EQTY.yaml` are registered
+  and record `blocked`: Safaricom's CDN answers 403 to the collector and Equity sits
+  behind an Incapsula challenge; both companies' published results still arrive through
+  the NSE. Not retried harder, not evaded.
+- **`collect/nse.py`** — listed-company announcements and circulars (`<h3>` title +
+  `box-link` PDF); results titles are attributed to a ticker by company name only when
+  one company fits clearly, else left unattributed; the page shows the current year and
+  the JavaScript year filter is not followed (recorded limitation).
+- **`collect/regulators.py`** — CBK Bank Supervision Annual Reports 2017–2024, Bank of
+  Tanzania supervision reports (English page), CMA stub (502 → `down`, nothing
+  collected, nothing raised). Bank of Uganda is not registered (JavaScript app).
+- **`collect/storage.py`, `collect/service.py`** — content-addressed atomic files;
+  conditional GET / sha comparison → `unchanged`; new bytes at a known identity →
+  `version_no + 1` with `superseded_by_id`; non-PDF bodies are recorded failures; per-run
+  document cap and request budget; every source's health recorded per run.
+- CLI `corporate collect [--ticker] [--source] [--dry-run] [--max]`, `corporate documents
+  list`, `corporate sources health`.
+
+Tests: `app/tests/unit/test_corporate_collect.py` — 17 tests on trimmed copies of the
+real page markup (three KCB pages, NSE announcements, CBK, BoT) served by a fake web:
+signed-link identity without the signature, rule-file validation, KCB discovery (six
+report years, subsidiaries without the money-market funds), NSE attribution (Safaricom
+→ SCOM, unknown company → None), regulators and the CMA stub, blocked/down health,
+content-addressed storage, the service (fetch → 304 unchanged → re-issued bytes as
+version 2 with the old file kept), dry run, document and byte caps as outcomes, non-PDF
+failure, ticker filter keeping regulators, no signed URL persisted or logged, CLI.
+
+Live: recorded in `docs/corporate-intelligence.md` after the run against the live store
+(the store is migrated per merged phase, never ahead of the code's head).
+
+Remaining: C4 extraction consumes `pending` documents; the NSE year filter and Bank of
+Uganda are follow-ups; Safaricom/Equity full annual reports need a source that is not
+bot-protected (CMA when reachable).

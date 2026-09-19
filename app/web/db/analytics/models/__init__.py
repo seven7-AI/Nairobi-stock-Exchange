@@ -19,6 +19,11 @@ from app.web.db.analytics.models.backtest import (
 from app.web.db.analytics.models.calc_version import CalcVersion
 from app.web.db.analytics.models.classification import Classification
 from app.web.db.analytics.models.corporate_company import CorporateCompany, CorporateSighting
+from app.web.db.analytics.models.corporate_document import (
+    CorporateDocument,
+    CorporateExtraction,
+    CorporateSource,
+)
 from app.web.db.analytics.models.corporate_entity import CorporateEntity, CorporateRelationship
 from app.web.db.analytics.models.correlation import Correlation
 from app.web.db.analytics.models.data_quality_finding import DataQualityFinding, Severity
@@ -43,9 +48,12 @@ __all__ = [
     "CalcVersion",
     "Classification",
     "CorporateCompany",
+    "CorporateDocument",
     "CorporateEntity",
+    "CorporateExtraction",
     "CorporateRelationship",
     "CorporateSighting",
+    "CorporateSource",
     "Correlation",
     "DataQualityFinding",
     "FactorScore",

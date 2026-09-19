@@ -14,6 +14,7 @@ credentials, so every logged URL has its query string stripped.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -131,6 +132,10 @@ class PoliteClient:
         self._now = now
         agent = user_agent if not contact_email else f"{user_agent}; contact: {contact_email}"
         self.user_agent = agent
+        # httpx logs every request URL at INFO, query string included - which for a
+        # signed download link is the credential. Only our redacted lines are logged.
+        for name in ("httpx", "httpcore"):
+            logging.getLogger(name).setLevel(logging.WARNING)
         self._client = httpx.Client(
             transport=transport,
             timeout=timeout_seconds,
