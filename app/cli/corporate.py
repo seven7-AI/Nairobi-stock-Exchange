@@ -20,6 +20,10 @@ from app.web.services.corporate.extract.capabilities import detect_capabilities
 corporate_app = typer.Typer(help="Corporate structure, geographic footprint and expansion facts.")
 universe_app = typer.Typer(help="The canonical company universe.")
 corporate_app.add_typer(universe_app, name="universe")
+entities_app = typer.Typer(help="Legal entities and their identifiers.")
+corporate_app.add_typer(entities_app, name="entities")
+gleif_app = typer.Typer(help="GLEIF LEI enrichment.")
+corporate_app.add_typer(gleif_app, name="gleif")
 console = Console()
 
 
@@ -178,6 +182,56 @@ def universe_diff(
                         f"{entry.get('reason')}"
                     )
     console.print(f"{changes} status change(s) in the last {days} days")
+
+
+@gleif_app.command("sync")
+def gleif_sync(
+    ticker: list[str] | None = typer.Option(None, "--ticker", help="Limit to these tickers."),
+) -> None:
+    """Look every company up on GLEIF; write LEIs, legal names, registration numbers."""
+    from app.web.services.corporate.entities.service import sync_gleif
+
+    settings = _settings()
+    result = sync_gleif(settings, tickers=ticker or None)
+    console.print(
+        f"[green]gleif:[/green] {result.companies} companies - matched {result.matched}, "
+        f"unchanged {result.unchanged}, no LEI {result.unmatched}; "
+        f"{result.requests} requests, {result.cache_hits} cache hits; "
+        f"{result.entities_created} listed entities created"
+    )
+    for line in result.ambiguous:
+        console.print(f"  [yellow]near match (review)[/yellow] {line}")
+    for line in result.errors:
+        console.print(f"  [red]error[/red] {line}")
+
+
+@entities_app.command("show")
+def entities_show(ticker: str = typer.Argument(..., help="Listed company ticker")) -> None:
+    """The listed company's own entity and every entity resolved under its group."""
+    from app.web.db.analytics import analytics_session
+    from app.web.db.analytics.services.corporate_entities import entities_for_group
+
+    settings = _settings()
+    with analytics_session(settings) as session:
+        rows = entities_for_group(session, ticker)
+        if not rows:
+            console.print(f"no entities for {ticker.upper()} (run `corporate gleif sync`)")
+            return
+        table = Table(title=f"entities under {ticker.upper()}")
+        for column in ("id", "legal name", "juris", "type", "lei", "reg. no", "method", "conf"):
+            table.add_column(column)
+        for row in rows:
+            table.add_row(
+                str(row.id),
+                row.legal_name,
+                row.jurisdiction,
+                row.entity_type,
+                row.lei or "-",
+                row.registration_number or "-",
+                row.resolution_method,
+                f"{row.confidence:.2f}",
+            )
+        console.print(table)
 
 
 __all__ = ["corporate_app"]

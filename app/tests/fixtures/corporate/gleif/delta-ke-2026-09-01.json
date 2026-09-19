@@ -1,0 +1,651 @@
+{
+ "meta": {
+  "goldenCopy": {
+   "publishDate": "2026-09-18T16:00:00Z"
+  },
+  "pagination": {
+   "currentPage": 1,
+   "perPage": 5,
+   "from": 1,
+   "to": 5,
+   "total": 18,
+   "lastPage": 4
+  }
+ },
+ "links": {
+  "first": "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalAddress.country%5D=KE&filter%5Bregistration.lastUpdateDate%5D=%3E2026-09-01&page%5Bnumber%5D=1&page%5Bsize%5D=5",
+  "next": "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalAddress.country%5D=KE&filter%5Bregistration.lastUpdateDate%5D=%3E2026-09-01&page%5Bnumber%5D=2&page%5Bsize%5D=5",
+  "last": "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalAddress.country%5D=KE&filter%5Bregistration.lastUpdateDate%5D=%3E2026-09-01&page%5Bnumber%5D=4&page%5Bsize%5D=5"
+ },
+ "data": [
+  {
+   "type": "lei-records",
+   "id": "984500DC5K8AA6E4CE54",
+   "attributes": {
+    "lei": "984500DC5K8AA6E4CE54",
+    "entity": {
+     "legalName": {
+      "name": "DBK LAKE HOLDINGS LIMITED",
+      "language": "en"
+     },
+     "otherNames": [],
+     "transliteratedOtherNames": [],
+     "legalAddress": {
+      "language": "en",
+      "addressLines": [
+       "GALANA PLAZA, GALANA ROAD",
+       "P.O BOX 12043 TOM MBOYA ST",
+       "KILELESHWA",
+       "DAGORETI DISTRICT"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "NAIROBI",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "headquartersAddress": {
+      "language": "en",
+      "addressLines": [
+       "GALANA PLAZA, GALANA ROAD",
+       "P.O BOX 12043 TOM MBOYA ST",
+       "KILELESHWA",
+       "DAGORETI DISTRICT"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "NAIROBI",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "registeredAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "registeredAs": "PVT-ZE1R6QA6",
+     "jurisdiction": "KE",
+     "category": "GENERAL",
+     "legalForm": {
+      "id": "8888",
+      "other": "Private Limited Company"
+     },
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "status": "ACTIVE",
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "successorEntities": [],
+     "creationDate": "2025-05-27T00:00:00Z",
+     "subCategory": null,
+     "otherAddresses": [],
+     "eventGroups": []
+    },
+    "registration": {
+     "initialRegistrationDate": "2025-10-14T11:36:33Z",
+     "lastUpdateDate": "2026-09-16T13:10:15Z",
+     "status": "ISSUED",
+     "nextRenewalDate": "2027-10-14T11:36:34Z",
+     "managingLou": "529900T8BM49AURSDO55",
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "validatedAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "validatedAs": "PVT-ZE1R6QA6",
+     "otherValidationAuthorities": []
+    },
+    "bic": null,
+    "mic": null,
+    "ocid": null,
+    "qcc": null,
+    "gem": null,
+    "spglobal": [
+     "1966145431"
+    ],
+    "conformityFlag": "CONFORMING"
+   },
+   "relationships": {
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54/managing-lou"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54/lei-issuer"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54/field-modifications"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54/direct-parent-reporting-exception"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/984500DC5K8AA6E4CE54"
+   }
+  },
+  {
+   "type": "lei-records",
+   "id": "984500682CZA706ABC24",
+   "attributes": {
+    "lei": "984500682CZA706ABC24",
+    "entity": {
+     "legalName": {
+      "name": "TENDAJI CAPITAL HOLDING LIMITED",
+      "language": "en"
+     },
+     "otherNames": [],
+     "transliteratedOtherNames": [],
+     "legalAddress": {
+      "language": "en",
+      "addressLines": [
+       "HARAMBEE AVENUE",
+       "P.O BOX P.O BOX 9206 CITY SQUARE",
+       "GILMARK PLAZA"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "NAIROBI",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "headquartersAddress": {
+      "language": "en",
+      "addressLines": [
+       "HARAMBEE AVENUE",
+       "P.O BOX P.O BOX 9206 CITY SQUARE",
+       "GILMARK PLAZA"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "NAIROBI",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "registeredAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "registeredAs": "PVT/2016/031936",
+     "jurisdiction": "KE",
+     "category": "GENERAL",
+     "legalForm": {
+      "id": "8888",
+      "other": "Private Limited Company"
+     },
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "status": "ACTIVE",
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "successorEntities": [],
+     "creationDate": "2016-11-18T00:00:00Z",
+     "subCategory": null,
+     "otherAddresses": [],
+     "eventGroups": []
+    },
+    "registration": {
+     "initialRegistrationDate": "2025-09-15T15:58:16Z",
+     "lastUpdateDate": "2026-09-15T16:17:42Z",
+     "status": "LAPSED",
+     "nextRenewalDate": "2026-09-15T15:58:17Z",
+     "managingLou": "529900T8BM49AURSDO55",
+     "corroborationLevel": "PARTIALLY_CORROBORATED",
+     "validatedAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "validatedAs": "PVT/2016/031936",
+     "otherValidationAuthorities": []
+    },
+    "bic": null,
+    "mic": null,
+    "ocid": null,
+    "qcc": null,
+    "gem": null,
+    "spglobal": [
+     "1960703549"
+    ],
+    "conformityFlag": "NON_CONFORMING"
+   },
+   "relationships": {
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24/managing-lou"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24/lei-issuer"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24/field-modifications"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24/direct-parent-reporting-exception"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/984500682CZA706ABC24"
+   }
+  },
+  {
+   "type": "lei-records",
+   "id": "254900EIJPMG7JHP0P23",
+   "attributes": {
+    "lei": "254900EIJPMG7JHP0P23",
+    "entity": {
+     "legalName": {
+      "name": "WIKOH TECHNICAL SERVICES LIMITED",
+      "language": "en"
+     },
+     "otherNames": [],
+     "transliteratedOtherNames": [],
+     "legalAddress": {
+      "language": "en",
+      "addressLines": [
+       "P.O. BOX 146"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "ELDORET",
+      "region": "KE-03",
+      "country": "KE",
+      "postalCode": "30100"
+     },
+     "headquartersAddress": {
+      "language": "en",
+      "addressLines": [
+       "+254711947361"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "BUNGOMA",
+      "region": "KE-03",
+      "country": "KE",
+      "postalCode": "50200"
+     },
+     "registeredAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "registeredAs": "PVT-BEUE2QJG",
+     "jurisdiction": "KE",
+     "category": "GENERAL",
+     "legalForm": {
+      "id": "9999",
+      "other": "PRIVATE LIMITED COMPANY"
+     },
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "status": "ACTIVE",
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "successorEntities": [],
+     "creationDate": "2024-08-14T00:00:00Z",
+     "subCategory": null,
+     "otherAddresses": [],
+     "eventGroups": []
+    },
+    "registration": {
+     "initialRegistrationDate": "2025-09-11T09:09:33Z",
+     "lastUpdateDate": "2026-09-11T13:30:00Z",
+     "status": "LAPSED",
+     "nextRenewalDate": "2026-09-11T09:09:33Z",
+     "managingLou": "5493001KJTIIGC8Y1R12",
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "validatedAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "validatedAs": "PVT-BEUE2QJG",
+     "otherValidationAuthorities": []
+    },
+    "bic": null,
+    "mic": null,
+    "ocid": null,
+    "qcc": null,
+    "gem": null,
+    "spglobal": [
+     "1960383796"
+    ],
+    "conformityFlag": "NON_CONFORMING"
+   },
+   "relationships": {
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23/managing-lou"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23/lei-issuer"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23/field-modifications"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23/direct-parent-reporting-exception"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/254900EIJPMG7JHP0P23"
+   }
+  },
+  {
+   "type": "lei-records",
+   "id": "984500948DAB9DFDP725",
+   "attributes": {
+    "lei": "984500948DAB9DFDP725",
+    "entity": {
+     "legalName": {
+      "name": "FSD AFRICA (INVESTMENTS) LIMITED",
+      "language": "en"
+     },
+     "otherNames": [],
+     "transliteratedOtherNames": [],
+     "legalAddress": {
+      "language": "en",
+      "addressLines": [
+       "RIVERSIDE DRIVE, BUILDING: RIVERSIDE GREEN SUITES",
+       "P.O BOX 5980 G.P.O NAIROBI"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "WESTLANDS DISTRICT",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "headquartersAddress": {
+      "language": "en",
+      "addressLines": [
+       "RIVERSIDE DRIVE, BUILDING: RIVERSIDE GREEN SUITES",
+       "P.O BOX 5980 G.P.O NAIROBI"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "WESTLANDS DISTRICT",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "00100"
+     },
+     "registeredAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "registeredAs": "PVT/2016/030247",
+     "jurisdiction": "KE",
+     "category": "GENERAL",
+     "legalForm": {
+      "id": "8888",
+      "other": "Private Limited Company"
+     },
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "status": "ACTIVE",
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "successorEntities": [],
+     "creationDate": "2016-11-18T00:00:00Z",
+     "subCategory": null,
+     "otherAddresses": [],
+     "eventGroups": []
+    },
+    "registration": {
+     "initialRegistrationDate": "2024-10-07T15:56:40Z",
+     "lastUpdateDate": "2026-09-12T16:28:36Z",
+     "status": "ISSUED",
+     "nextRenewalDate": "2027-10-07T15:56:42Z",
+     "managingLou": "529900T8BM49AURSDO55",
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "validatedAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "validatedAs": "PVT/2016/030247",
+     "otherValidationAuthorities": []
+    },
+    "bic": null,
+    "mic": null,
+    "ocid": null,
+    "qcc": null,
+    "gem": null,
+    "spglobal": [
+     "1900245161"
+    ],
+    "conformityFlag": "CONFORMING"
+   },
+   "relationships": {
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725/managing-lou"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725/lei-issuer"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725/field-modifications"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725/direct-parent-reporting-exception"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/984500948DAB9DFDP725"
+   }
+  },
+  {
+   "type": "lei-records",
+   "id": "984500196F8C3EHXAB04",
+   "attributes": {
+    "lei": "984500196F8C3EHXAB04",
+    "entity": {
+     "legalName": {
+      "name": "APOLLO AGRICULTURE LIMITED",
+      "language": "en"
+     },
+     "otherNames": [],
+     "transliteratedOtherNames": [],
+     "legalAddress": {
+      "language": "en",
+      "addressLines": [
+       "GREVILLEA GROVE, BUILDING: PKF BUILDING KALAMU HOUSE",
+       "WESTLANDS DISTRICT"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "WESTLANDS",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "66692"
+     },
+     "headquartersAddress": {
+      "language": "en",
+      "addressLines": [
+       "GREVILLEA GROVE, BUILDING: PKF BUILDING KALAMU HOUSE",
+       "WESTLANDS DISTRICT"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "mailRouting": null,
+      "city": "WESTLANDS",
+      "region": "KE-30",
+      "country": "KE",
+      "postalCode": "66692"
+     },
+     "registeredAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "registeredAs": "PVT/2016/025726",
+     "jurisdiction": "KE",
+     "category": "GENERAL",
+     "legalForm": {
+      "id": "8888",
+      "other": "Private Limited Company"
+     },
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "status": "ACTIVE",
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "successorEntities": [],
+     "creationDate": "2016-09-27T00:00:00Z",
+     "subCategory": null,
+     "otherAddresses": [],
+     "eventGroups": []
+    },
+    "registration": {
+     "initialRegistrationDate": "2023-10-12T10:56:25Z",
+     "lastUpdateDate": "2026-09-13T11:22:18Z",
+     "status": "ISSUED",
+     "nextRenewalDate": "2027-10-12T10:56:27Z",
+     "managingLou": "529900T8BM49AURSDO55",
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "validatedAt": {
+      "id": "RA000417",
+      "other": null
+     },
+     "validatedAs": "PVT/2016/025726",
+     "otherValidationAuthorities": []
+    },
+    "bic": null,
+    "mic": null,
+    "ocid": null,
+    "qcc": null,
+    "gem": null,
+    "spglobal": [
+     "589956619"
+    ],
+    "conformityFlag": "NON_CONFORMING"
+   },
+   "relationships": {
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04/managing-lou"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04/lei-issuer"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04/field-modifications"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04/direct-parent-reporting-exception"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/984500196F8C3EHXAB04"
+   }
+  }
+ ]
+}

@@ -156,6 +156,55 @@ Mumias), so the page alone never delists and never lists; it is a name and
 identifier source. Reasons are written with dates, not day counts, so an unchanged
 company is `unchanged` on every run.
 
+## Legal entities and the resolver (C2)
+
+`corporate_entities` is one row per legal entity any source names — the listed
+group itself (`entity_type=listed`, `listed_ticker`), subsidiaries, associates, joint
+ventures, branches. Identity is the **normalised legal name plus jurisdiction**
+(`entities/normalise.py`: NFKD → ascii → lower, `&` → `and`, punctuation out, one
+legal-form suffix off; country words and the tokens that tell sister companies apart
+— `bank`, `insurance`, `health`, `capital`, … — are kept). A report that names an
+entity without a country gets jurisdiction `ZZ` and a review item, never Kenya by
+default.
+
+The resolver (`entities/resolver.py`) runs a ladder and records the rung and its
+confidence on every entity (`resolution_method`, `confidence`):
+
+| Rung | Match | Confidence |
+|---|---|---|
+| 1 | LEI exact | 1.00 |
+| 2 | ISIN exact → the listed company's own entity | 1.00 |
+| 3 | (registration number, jurisdiction) | 0.98 |
+| 4 | exchange id in `identifiers` | 0.98 |
+| 5 | canonical key (normalised name + jurisdiction) | 0.95 |
+| 6 | fuzzy, **only within the same jurisdiction and the same listed group**: token-set similarity ≥ 0.92, runner-up ≤ 0.80, and no distinguishing token differs | score × 0.9 |
+| 7 | near miss (a candidate scored ≥ 0.80) → provisional entity with the candidates recorded for review; clean miss → new entity | 0.60 / 0.85 |
+
+So `KCB Bank Kenya Limited` and `KCB Bank Kenya Ltd` are one entity; `KCB Bank
+Kenya` and `KCB Bank Tanzania` are two (jurisdiction from the name, country tokens
+differ); `Jubilee Insurance Company of Kenya` and `Jubilee Health Insurance` are two
+(`health`); a mangled suffix (`Limitd`) scores 0.86 and goes provisional rather than
+guessed. Merges of provisional entities re-issue their relationship versions under
+the target (`merged_into_id`, reason `merged_entity`) — nothing is deleted.
+
+**GLEIF** (`entities/gleif.py`, `corporate gleif sync`) enriches identifiers: for
+each company, a full-text search in its home country; an exact normalised-name match
+(or one of the record's other names) writes the LEI, GLEIF's legal name and the
+registration number at confidence 1.0 onto the company and its listed entity; a
+fenced near match (≥ 0.95, no distinguishing token) writes the LEI at 0.85 and is
+reported for review; no match writes `field_sources.lei = {gleif, 0.0, "no LEI record
+matches … (checked <date>)"}` and `identifiers.gleif_checked_at` — checked, not
+absent. Responses are cached on disk (`CORPORATE_CACHE_DIR/gleif`, 7 days for
+searches, 1 day for the `updated_since` delta). Retired records never match. The
+relationship endpoints are not called.
+
+**`corporate_relationships`** (parent → child, type, ownership % as a Measure triple,
+basis, the child's country *as that report states it*, period) is the first
+bitemporal table; `bitemporal.py::append_and_close` is its only writer (see the
+semantics above), `close_valid_time` ends a relationship with a new version, and
+`as_of` / `as_known_on` / `current` compose the two time axes. The subsidiaries note
+parser (C4) is what fills it.
+
 ## Sources and their hierarchy
 
 | Field | Order of authority |
@@ -214,6 +263,8 @@ uv run nse-analysis corporate capabilities    # which extraction stages this box
 uv run nse-analysis corporate universe build [--no-network]   # rebuild corporate_companies
 uv run nse-analysis corporate universe show [KCB]             # the universe, or one company with field sources
 uv run nse-analysis corporate universe diff [--days 7]        # recent listing-status changes
+uv run nse-analysis corporate gleif sync [--ticker KCB]       # LEI / legal name / registration number enrichment
+uv run nse-analysis corporate entities show KCB               # the entities resolved under a listed group
 ```
 
 Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
@@ -226,7 +277,7 @@ Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
 |---|---|---|---|
 | C0 skeleton, settings, config, countries, polite client, CLI, this document | #71 | done 2026-09-19 | `httpx`, `pymupdf`, `pdfplumber` added; Camelot/OCR need `gs` / `tesseract` / `pdftoppm` (not installed on this box yet) |
 | C1 canonical company universe | #72 | done 2026-09-19 | migration `20260919_0015`; live: 81 companies — 57 listed, 6 newly listed, 10 delisted (2012 archive names), 8 unknown; ISIN for 66, website for 61, sector for 81; home country from a scraped profile for 4, assumed `KE` for 77 |
-| C2 GLEIF, entities, resolver, bitemporal helpers | — | planned | |
+| C2 GLEIF, entities, resolver, bitemporal helpers | #73 | done 2026-09-19 | migration `20260919_0016`; live: 81 listed entities; GLEIF exact matches for 12 (ABSA, BAMB, BAT, DTK, EABL, FMLY, KQ, NBK, SCBK, SCOM, TOTL via its former name, UTK), 69 checked with no record — KCB Group, Equity Group, NCBA Group, Co-op and Britam have no LEI; 81 requests, cached 7 days |
 | C3 document collector | — | planned | |
 | C4 PDF text/tables, subsidiaries parser, labels v1 | — | planned | |
 | C5 segment/operations parsers, disclosure statuses, labels v2 | — | planned | |
