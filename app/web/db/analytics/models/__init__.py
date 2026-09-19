@@ -18,6 +18,7 @@ from app.web.db.analytics.models.backtest import (
 )
 from app.web.db.analytics.models.calc_version import CalcVersion
 from app.web.db.analytics.models.classification import Classification
+from app.web.db.analytics.models.corporate_company import CorporateCompany, CorporateSighting
 from app.web.db.analytics.models.correlation import Correlation
 from app.web.db.analytics.models.data_quality_finding import DataQualityFinding, Severity
 from app.web.db.analytics.models.factor_score import FactorScore
@@ -40,6 +41,8 @@ __all__ = [
     "BacktestRun",
     "CalcVersion",
     "Classification",
+    "CorporateCompany",
+    "CorporateSighting",
     "Correlation",
     "DataQualityFinding",
     "FactorScore",

@@ -115,6 +115,47 @@ confidence}`. Signed download links are credentials: they are logged with the qu
 string stripped and are never persisted (a signed document's identity is the page
 it was linked from plus the link text).
 
+## The company universe (C1)
+
+`corporate_companies` is one row per listed company (ordinary shares, REITs, ETFs;
+preference shares fold into their parent as extra `exchange_ids`; indices and rights
+are not companies). It is rebuilt by `nse-analysis corporate universe build` from:
+
+| Field | Source, in order of authority (confidence) |
+|---|---|
+| ticker, canonical name, instrument type | scraper `instruments` (1.0 / 0.9) |
+| legal name | GLEIF (1.0, C2) → NSE listed-companies page, par-value suffix stripped (0.7) → scraper (0.6) |
+| sector | the `classifications` stint valid today (0.95); empty with the page heading as evidence when unclassified |
+| home country | stockanalysis profile `country` from the scraper's database (0.8) → `KE` **assumed** for a primary NSE listing (0.5) |
+| ISIN, website | NSE page `ISIN CODE` / logo link (0.9 / 0.7); profile website first (0.8) |
+| name history | scraper `instrument_aliases` (`BBK → ABSA`, rebrand; `NIC → NCBA`, merger) |
+| listing status | the rules below (1.0, evidence = the reason) |
+
+`field_sources` records the source, confidence and evidence per field; a better
+source replaces a field by out-ranking it, never silently. `confidence` on the row
+is the lowest identity-field confidence — 0.5 for every company whose home country
+is assumed rather than captured, which is honest and visible.
+
+**Sightings.** Every build appends one `corporate_sightings` row per (company,
+source): the scraper's instrument row, the profile, and the NSE page block. A run is
+identified by its `seen_at`; "how many page runs since this company was last named"
+is a count of later run timestamps, so absence is never stored as a fact.
+
+**Status rules** (`universe/rules.py`, pure; thresholds in `CorporateConfig`):
+
+| Status | Rule |
+|---|---|
+| `listed` | named on the latest NSE page run **or** an observation within 30 days |
+| `newly_listed` | listed, and the first observation is within 90 days |
+| `suspended` | only an announcement naming the company (C9); lifted by a "lifting of suspension" notice |
+| `delisted` | a delisting announcement; or last traded on the 2012-12-31 archive cut-over and not on the page; or absent from the page for ≥ 3 runs **and** untraded for ≥ 60 days |
+| kept / `unknown` | anything short of the above keeps the previous status with a `kept:` reason, or is `unknown` with the evidence listed |
+
+The NSE page still names companies that stopped trading years ago (ARM, Deacons,
+Mumias), so the page alone never delists and never lists; it is a name and
+identifier source. Reasons are written with dates, not day counts, so an unchanged
+company is `unchanged` on every run.
+
 ## Sources and their hierarchy
 
 | Field | Order of authority |
@@ -170,6 +211,9 @@ corporate config` prints them with their hash.
 ```bash
 uv run nse-analysis corporate config          # thresholds and their hash
 uv run nse-analysis corporate capabilities    # which extraction stages this box can run
+uv run nse-analysis corporate universe build [--no-network]   # rebuild corporate_companies
+uv run nse-analysis corporate universe show [KCB]             # the universe, or one company with field sources
+uv run nse-analysis corporate universe diff [--days 7]        # recent listing-status changes
 ```
 
 Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
@@ -181,7 +225,7 @@ Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
 | Phase | Issue | State | Notes |
 |---|---|---|---|
 | C0 skeleton, settings, config, countries, polite client, CLI, this document | #71 | done 2026-09-19 | `httpx`, `pymupdf`, `pdfplumber` added; Camelot/OCR need `gs` / `tesseract` / `pdftoppm` (not installed on this box yet) |
-| C1 canonical company universe | — | planned | |
+| C1 canonical company universe | #72 | done 2026-09-19 | migration `20260919_0015`; live: 81 companies — 57 listed, 6 newly listed, 10 delisted (2012 archive names), 8 unknown; ISIN for 66, website for 61, sector for 81; home country from a scraped profile for 4, assumed `KE` for 77 |
 | C2 GLEIF, entities, resolver, bitemporal helpers | — | planned | |
 | C3 document collector | — | planned | |
 | C4 PDF text/tables, subsidiaries parser, labels v1 | — | planned | |
@@ -193,5 +237,17 @@ Later phases add `universe`, `collect`, `documents`, `sources`, `extract`,
 | C10 pipelines, cron, Celery, status | — | planned | |
 | A1–A9 analytics, factor, API, dashboard, diagrams, AI, coverage, docs | — | planned | see epic #70 |
 
-Coverage numbers (companies, documents, facts by disclosure, extraction pass rate)
-appear here from C3 onwards.
+Coverage numbers (documents, facts by disclosure, extraction pass rate) appear here
+from C3 onwards.
+
+Universe, 2026-09-19: the NSE page names 71 blocks / 68 symbols; 67 map to scraper
+instruments (the Satrix MSCI World feeder ETF `SMWF.E0000` is not in the scraper's
+master). The eight `unknown` companies are honest gaps: ARM, Deacons, the NewGold ETF
+and Mumias are still named on the NSE page but have no observation since the
+2024-12-31 archive end; Homeboyz, KenolKobil (last traded 2019-10-11), National Bank
+of Kenya and Kenya Orchards are on neither. The six `newly_listed` (ALP, AMAC,
+Family Bank, KPC, SKL, TRIFIC) have their first observation on 2026-07-26 — the day
+the scraper era begins — so "newly" is bounded by the archive, and the reason says
+so. Home country is captured for only the 4 companies the scraper has re-scraped with
+the company page (nse-stock-scraper#7 rate limit); the other 77 carry `KE` as an
+assumption at confidence 0.5.
