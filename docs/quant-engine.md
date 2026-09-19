@@ -166,7 +166,8 @@ new version — the old rows stay.
   writes, and connections wait up to 120 s for it (`BUSY_TIMEOUT_SECONDS`). The
   backtester simulates with no lock held and writes at the end.
 - `docs/STATUS.md` records every phase with its live numbers; `docs/data-sources.md`
-  describes the raw sources and their known defects.
+  describes the raw sources and their known defects; `docs/corporate-intelligence.md`
+  is the design record of the corporate structure / geographic footprint layer.
 
 ## End-to-end runbook
 

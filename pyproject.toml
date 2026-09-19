@@ -43,6 +43,10 @@ dependencies = [
     "rich>=14.3.2",
     "requests==2.31.0",
     "anthropic>=1.5.0",
+    # --- corporate intelligence (document collection + PDF extraction) ---
+    "httpx>=0.28.1",
+    "pymupdf>=1.28.2",
+    "pdfplumber>=0.11.10",
 ]
 
 [project.scripts]
@@ -62,7 +66,6 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=0.25.0",
     "pytest-cov>=6.0.0",
-    "httpx>=0.28.0",
     "pandas-stubs>=3.0.0.260204",
     "types-pyyaml>=6.0.12",
     "types-requests>=2.31.0",
@@ -117,6 +120,7 @@ markers = [
     "integration: tests that touch a database, Redis, or the network",
     "slow: long-running tests excluded from the default fast loop",
     "realdata: assertions against the LIVE scraper database; skipped when it is absent",
+    "documents: assertions against collected annual reports; skipped when a report is absent",
 ]
 
 [tool.coverage.run]
